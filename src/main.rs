@@ -56,8 +56,8 @@ fn main() {
             match game_localizer::commands::check::run(&hash,&file) {
                 Ok(result) => {
                     match result {
-                        CheckResult::Match() => {
-                        println!("Hash match");
+                        CheckResult::Match => {
+                            println!("Hash match");
                         }
                         CheckResult::NoMatch {actual} => {
                         println!("Hashes differ");
