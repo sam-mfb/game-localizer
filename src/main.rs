@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
+use game_localizer::commands::check::CheckResult;
 
 #[derive(Parser)]
 #[command(name = "game-localizer")]
@@ -20,6 +21,10 @@ enum Commands {
         /// Second file to compare
         file2: PathBuf,
     },
+    Check {
+        hash: String,
+        file: PathBuf,
+    }
 }
 
 fn main() {
@@ -44,5 +49,25 @@ fn main() {
                 }
             }
         }
+        Commands::Check { hash, file } => {
+            match game_localizer::commands::check::run(&hash,&file) {
+                Ok(result) => {
+                    match result {
+                        CheckResult::Match() => {
+                        println!("Hash match");
+                        }
+                        CheckResult::NoMatch {actual} => {
+                        println!("Hashes differ");
+                        println!("Expected hash: {}",hash);
+                        println!("Actual Hash: {}",actual);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(2);
+                }
+      }
+    }
     }
 }
