@@ -1,3 +1,4 @@
 pub mod calculate;
-pub mod compare;
 pub mod check;
+pub mod compare;
+pub mod patch_file;

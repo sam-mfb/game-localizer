@@ -19,6 +19,22 @@ enum Commands {
         #[command(subcommand)]
         command: HashCommands,
     },
+    Patch {
+        #[command(subcommand)]
+        command: PatchCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum PatchCommands {
+    File {
+        /// File to patch
+        orig: PathBuf,
+        /// File to create patch from
+        new: PathBuf,
+        /// Path to write patch file to
+        patch: PathBuf
+    }
 }
 
 #[derive(Subcommand)]
@@ -48,6 +64,19 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Patch { command } => match command {
+            PatchCommands::File { orig, new, patch } => {
+                match game_localizer::commands::patch_file::run(&orig, &new, &patch) {
+                    Ok(()) => {
+                        println!("Patch written to {}", patch.display());
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
+                }
+            }
+        }
         Commands::Hash { command } => match command {
             HashCommands::Calculate { file } => {
                 match game_localizer::commands::calculate::run(&file) {
