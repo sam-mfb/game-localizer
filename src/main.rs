@@ -14,6 +14,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Calculate the SHA-256 hash of a file
+    Calculate {
+        /// File to hash 
+        file: PathBuf
+    },
     /// Compare two files by their SHA-256 hash
     Compare {
         /// First file to compare
@@ -34,6 +39,18 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Calculate { file } => {
+            match game_localizer::commands::calculate::run(&file) {
+                Ok(result) => {
+                    println!("Hash for file {}: {}", file.display(), result);
+                    process::exit(1);
+                }
+                Err(e)=> {
+                    eprintln!("Error: {}",e);
+                    process::exit(2);
+                }
+            }
+        }
         Commands::Compare { file1, file2 } => {
             match game_localizer::commands::compare::run(&file1, &file2) {
                 Ok(result) => {
