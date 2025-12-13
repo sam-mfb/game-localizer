@@ -3,24 +3,33 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Operation {
-    Patch,
-    Add,
-    Delete,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "lowercase")]
+pub enum ManifestEntry {
+    Patch {
+        file: String,
+        original_hash: String,
+        diff_hash: String,
+        final_hash: String,
+    },
+    Add {
+        file: String,
+        final_hash: String,
+    },
+    Delete {
+        file: String,
+        original_hash: String,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ManifestEntry {
-    pub file: String,
-    pub operation: Operation,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub original_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub diff_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_hash: Option<String>,
+impl ManifestEntry {
+    pub fn file(&self) -> &str {
+        match self {
+            ManifestEntry::Patch { file, .. } => file,
+            ManifestEntry::Add { file, .. } => file,
+            ManifestEntry::Delete { file, .. } => file,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,26 +75,19 @@ mod tests {
         let manifest = Manifest {
             version: 1,
             entries: vec![
-                ManifestEntry {
+                ManifestEntry::Patch {
                     file: "game.bin".to_string(),
-                    operation: Operation::Patch,
-                    original_hash: Some("abc123".to_string()),
-                    diff_hash: Some("def456".to_string()),
-                    final_hash: Some("ghi789".to_string()),
+                    original_hash: "abc123".to_string(),
+                    diff_hash: "def456".to_string(),
+                    final_hash: "ghi789".to_string(),
                 },
-                ManifestEntry {
+                ManifestEntry::Add {
                     file: "new_asset.bin".to_string(),
-                    operation: Operation::Add,
-                    original_hash: None,
-                    diff_hash: None,
-                    final_hash: Some("jkl012".to_string()),
+                    final_hash: "jkl012".to_string(),
                 },
-                ManifestEntry {
+                ManifestEntry::Delete {
                     file: "old_asset.bin".to_string(),
-                    operation: Operation::Delete,
-                    original_hash: Some("mno345".to_string()),
-                    diff_hash: None,
-                    final_hash: None,
+                    original_hash: "mno345".to_string(),
                 },
             ],
         };
@@ -103,8 +105,8 @@ mod tests {
             "version": 1,
             "entries": [
                 {
-                    "file": "test.bin",
                     "operation": "patch",
+                    "file": "test.bin",
                     "original_hash": "aaa",
                     "diff_hash": "bbb",
                     "final_hash": "ccc"
@@ -118,8 +120,8 @@ mod tests {
         let manifest = Manifest::load(temp_file.path()).unwrap();
         assert_eq!(manifest.version, 1);
         assert_eq!(manifest.entries.len(), 1);
-        assert_eq!(manifest.entries[0].file, "test.bin");
-        assert_eq!(manifest.entries[0].operation, Operation::Patch);
+        assert_eq!(manifest.entries[0].file(), "test.bin");
+        assert!(matches!(manifest.entries[0], ManifestEntry::Patch { .. }));
     }
 
     #[test]
@@ -141,12 +143,9 @@ mod tests {
     fn save_produces_valid_json() {
         let manifest = Manifest {
             version: 1,
-            entries: vec![ManifestEntry {
+            entries: vec![ManifestEntry::Add {
                 file: "test.bin".to_string(),
-                operation: Operation::Add,
-                original_hash: None,
-                diff_hash: None,
-                final_hash: Some("hash123".to_string()),
+                final_hash: "hash123".to_string(),
             }],
         };
 
@@ -158,5 +157,27 @@ mod tests {
         assert!(content.contains("\"final_hash\": \"hash123\""));
         assert!(!content.contains("original_hash"));
         assert!(!content.contains("diff_hash"));
+    }
+
+    #[test]
+    fn file_helper_returns_filename() {
+        let patch = ManifestEntry::Patch {
+            file: "a.bin".to_string(),
+            original_hash: "x".to_string(),
+            diff_hash: "y".to_string(),
+            final_hash: "z".to_string(),
+        };
+        let add = ManifestEntry::Add {
+            file: "b.bin".to_string(),
+            final_hash: "x".to_string(),
+        };
+        let delete = ManifestEntry::Delete {
+            file: "c.bin".to_string(),
+            original_hash: "x".to_string(),
+        };
+
+        assert_eq!(patch.file(), "a.bin");
+        assert_eq!(add.file(), "b.bin");
+        assert_eq!(delete.file(), "c.bin");
     }
 }
