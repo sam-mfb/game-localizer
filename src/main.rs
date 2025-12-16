@@ -24,6 +24,11 @@ enum Commands {
         #[command(subcommand)]
         command: HashCommands,
     },
+    /// Patch operations for directories
+    Patch {
+        #[command(subcommand)]
+        command: PatchCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -68,6 +73,29 @@ enum HashCommands {
         hash: String,
         /// File to compare
         file: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum PatchCommands {
+    /// Create a patch from two directories
+    Create {
+        /// Original directory
+        orig: PathBuf,
+        /// Modified directory
+        new: PathBuf,
+        /// Output directory for patch files
+        output: PathBuf,
+        /// Manifest version number
+        #[arg(long, default_value = "1")]
+        version: u32,
+    },
+    /// Apply a patch to a target directory
+    Apply {
+        /// Target directory to patch
+        target: PathBuf,
+        /// Directory containing patch files
+        patch: PathBuf,
     },
 }
 
@@ -141,6 +169,35 @@ fn main() {
                             println!("Actual hash: {}", actual);
                         }
                     },
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
+                }
+            }
+        }
+        Commands::Patch { command } => match command {
+            PatchCommands::Create {
+                orig,
+                new,
+                output,
+                version,
+            } => {
+                match game_localizer::commands::patch_create::run(&orig, &new, &output, version) {
+                    Ok(()) => {
+                        println!("Patch created at {}", output.display());
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
+                }
+            }
+            PatchCommands::Apply { target, patch } => {
+                match game_localizer::commands::patch_apply::run(&target, &patch) {
+                    Ok(()) => {
+                        println!("Patch applied successfully");
+                    }
                     Err(e) => {
                         eprintln!("Error: {}", e);
                         process::exit(2);
