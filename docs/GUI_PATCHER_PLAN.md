@@ -70,6 +70,21 @@ At runtime: extract to temp dir, load manifest, apply patch.
 4. **Success** - Green checkmark, done message
 5. **Error** - Red X, error details, "Show Details" expander
 
+**Demo mode** (`cargo run -p patcher-gui -- --demo`):
+- Uses mock manifest data (no real patch embedded)
+- Simulates state transitions without touching filesystem
+- For UI development and testing appearance of all states
+
+**Headless mode** (for generated patchers):
+```bash
+./my-patcher                        # Launch GUI (default)
+./my-patcher --headless <target>    # CLI mode, no GUI
+./my-patcher --headless <target> -y # Skip confirmation prompt
+```
+- Same binary supports both GUI and CLI
+- Useful for advanced users and E2E testing
+- Outputs progress and errors to stdout/stderr
+
 **Key dependencies:**
 - `eframe` / `egui` - GUI framework
 - `rfd` - Native file dialogs
