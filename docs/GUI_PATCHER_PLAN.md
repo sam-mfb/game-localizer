@@ -183,14 +183,26 @@ patch-core = { path = "../patch-core" }
 
 ## Cross-Compilation Targets
 
+**Phase 1 - via `cross` (Docker):**
 | Target | Output Name | Notes |
 |--------|-------------|-------|
-| x86_64-unknown-linux-gnu | patcher-linux | Default |
+| x86_64-unknown-linux-gnu | patcher-linux-x64 | Default |
+| aarch64-unknown-linux-gnu | patcher-linux-arm64 | ARM64 Linux |
 | x86_64-pc-windows-gnu | patcher-windows.exe | Default |
-| x86_64-apple-darwin | patcher-macos | Requires osxcross setup |
+
+**Phase 2 - macOS:**
+| Target | Output Name | Notes |
+|--------|-------------|-------|
+| x86_64-apple-darwin | patcher-macos-x64 | Intel Mac |
+| aarch64-apple-darwin | patcher-macos-arm64 | Apple Silicon |
+
+macOS options:
+- Build natively on Mac hardware (`cargo build --release`)
+- GitHub Actions (free macOS runners)
+- osxcross (complex setup, not recommended)
 
 ## Notes
 
-- macOS cross-compilation from Linux is complex; may need to build on actual Mac or skip initially
-- Windows builds from Linux work well with cross
-- Consider ARM targets (aarch64) as future enhancement
+- Start with Linux + Windows via `cross` (works great from Docker)
+- Add macOS via native build on Mac or GitHub Actions
+- ARM Linux (aarch64) included for Raspberry Pi, AWS Graviton, etc.
