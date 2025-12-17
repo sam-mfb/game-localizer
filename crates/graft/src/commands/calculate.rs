@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use patch_core::utils::hash::hash_bytes;
+use graft_core::utils::hash::hash_bytes;
 
 pub fn run(file: &Path) -> io::Result<String> {
     let data = fs::read(file)?;

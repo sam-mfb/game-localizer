@@ -5,42 +5,40 @@
 Create a tool that takes a patch directory and produces self-contained GUI executables for macOS, Windows, and Linux.
 
 **Workflow:**
-1. `game-localizer patch create ...` - Create patch (existing)
-2. `game-localizer patch apply ...` - Test patch (existing)
-3. `patch-gui-builder build <patch-dir> -o dist/` - Build GUI executables (new)
+1. `graft patch create ...` - Create patch (existing)
+2. `graft patch apply ...` - Test patch (existing)
+3. `graft-builder build <patch-dir> -o dist/` - Build GUI executables (new)
 
 **User choices:**
 - GUI framework: egui/eframe (pure Rust, ~5MB binaries)
-- Build approach: Separate `patch-gui-builder` tool
+- Build approach: Separate `graft-builder` tool
 - Cross-platform: Local cross-compile using `cross` (Docker)
 
 ## Project Structure
 
-Convert to Cargo workspace:
-
 ```
-game-localizer/
+graft/
 ├── Cargo.toml                    # Workspace root
 ├── crates/
-│   ├── patch-core/               # Shared library (extracted)
+│   ├── graft-core/               # Shared library (done)
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── patch/            # apply.rs, verify.rs, mod.rs
 │   │       └── utils/            # manifest.rs, diff.rs, hash.rs, file_ops.rs
 │   │
-│   ├── game-localizer/           # Existing CLI (moved)
+│   ├── graft/                    # CLI (done)
 │   │   └── src/
 │   │       ├── main.rs
 │   │       └── commands/
 │   │
-│   ├── patch-gui-builder/        # Builder tool (new)
+│   ├── graft-builder/            # Builder tool (new)
 │   │   └── src/
 │   │       ├── main.rs           # CLI: build subcommand
 │   │       ├── builder.rs        # Orchestrates build process
 │   │       ├── archive.rs        # Creates tar.gz of patch
 │   │       └── template.rs       # Generates Rust project
 │   │
-│   └── patcher-gui/              # GUI app template (new)
+│   └── graft-gui/                # GUI app template (new)
 │       └── src/
 │           ├── main.rs           # Entry point with embedded data
 │           └── app.rs            # egui application
@@ -51,11 +49,11 @@ game-localizer/
 Embed patch as compressed tar archive:
 
 ```rust
-// Generated in patcher-gui/src/main.rs
+// Generated in graft-gui/src/main.rs
 const PATCH_DATA: &[u8] = include_bytes!("../patch_data.tar.gz");
 
 fn main() -> eframe::Result<()> {
-    patcher_gui::run(PATCH_DATA)
+    graft_gui::run(PATCH_DATA)
 }
 ```
 
@@ -70,7 +68,7 @@ At runtime: extract to temp dir, load manifest, apply patch.
 4. **Success** - Green checkmark, done message
 5. **Error** - Red X, error details, "Show Details" expander
 
-**Demo mode** (`cargo run -p patcher-gui -- --demo`):
+**Demo mode** (`cargo run -p graft-gui -- --demo`):
 - Uses mock manifest data (no real patch embedded)
 - Simulates state transitions without touching filesystem
 - For UI development and testing appearance of all states
@@ -95,12 +93,12 @@ At runtime: extract to temp dir, load manifest, apply patch.
 - `eframe` / `egui` - GUI framework
 - `rfd` - Native file dialogs
 - `tar` / `flate2` - Archive extraction
-- `patch-core` - Patching logic
+- `graft-core` - Patching logic
 
 ## CLI Interface
 
 ```
-patch-gui-builder build <PATCH_DIR> [OPTIONS]
+graft-builder build <PATCH_DIR> [OPTIONS]
 
 OPTIONS:
     -o, --output <DIR>       Output directory [default: ./dist]
@@ -113,13 +111,13 @@ OPTIONS:
 
 ## Implementation Phases
 
-### Phase 1: Workspace Restructure
+### Phase 1: Workspace Restructure ✓
 - Convert to Cargo workspace
-- Create `crates/patch-core/` - extract `src/patch/` and `src/utils/`
-- Move CLI to `crates/game-localizer/`
+- Create `crates/graft-core/` - extract `src/patch/` and `src/utils/`
+- Move CLI to `crates/graft/`
 - Update imports, verify tests pass
 
-### Phase 2: GUI Runtime (`patcher-gui`)
+### Phase 2: GUI Runtime (`graft-gui`)
 - Create egui app with state machine
 - Implement demo mode with mock data
 - Implement patch extraction from embedded tar.gz
@@ -128,7 +126,7 @@ OPTIONS:
 - Success/error views
 - Headless mode (`--headless <target>`)
 
-### Phase 3: Builder Tool (`patch-gui-builder`)
+### Phase 3: Builder Tool (`graft-builder`)
 - CLI with clap
 - Archive creation (tar.gz patch data)
 - Template project generation
@@ -156,27 +154,9 @@ OPTIONS:
 - Better error messages
 - Documentation
 
-## Key Files to Modify/Create
-
-**Extract to patch-core:**
-- `src/patch/mod.rs` → `crates/patch-core/src/patch/mod.rs`
-- `src/patch/apply.rs` → `crates/patch-core/src/patch/apply.rs`
-- `src/patch/verify.rs` → `crates/patch-core/src/patch/verify.rs`
-- `src/utils/*` → `crates/patch-core/src/utils/*`
-
-**New files:**
-- `Cargo.toml` - workspace root
-- `crates/patch-core/Cargo.toml`
-- `crates/game-localizer/Cargo.toml`
-- `crates/patch-gui-builder/src/main.rs`
-- `crates/patch-gui-builder/src/builder.rs`
-- `crates/patch-gui-builder/src/archive.rs`
-- `crates/patcher-gui/src/main.rs`
-- `crates/patcher-gui/src/app.rs`
-
 ## Dependencies
 
-**patch-core:**
+**graft-core:**
 ```toml
 bsdiff = "0.2.1"
 serde = { version = "1", features = ["derive"] }
@@ -184,7 +164,7 @@ serde_json = "1"
 sha2 = "0.10"
 ```
 
-**patcher-gui:**
+**graft-gui:**
 ```toml
 eframe = "0.29"
 rfd = "0.15"
@@ -193,16 +173,16 @@ flate2 = "1.0"
 tempfile = "3"
 rust-i18n = "3"                   # Localization
 sys-locale = "0.3"                # Detect system locale
-patch-core = { path = "../patch-core" }
+graft-core = { path = "../graft-core" }
 ```
 
-**patch-gui-builder:**
+**graft-builder:**
 ```toml
 clap = { version = "4", features = ["derive"] }
 tar = "0.4"
 flate2 = "1.0"
 tempfile = "3"
-patch-core = { path = "../patch-core" }
+graft-core = { path = "../graft-core" }
 ```
 
 ## Cross-Compilation Targets

@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use patch_core::utils::diff::apply_diff;
+use graft_core::utils::diff::apply_diff;
 
 pub fn run(orig: &Path, diff: &Path, output: &Path) -> io::Result<()> {
     let orig_data = fs::read(orig)?;
@@ -15,7 +15,7 @@ pub fn run(orig: &Path, diff: &Path, output: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use patch_core::utils::diff::create_diff;
+    use graft_core::utils::diff::create_diff;
     use std::io::Write;
     use tempfile::NamedTempFile;
 

@@ -2,11 +2,11 @@ use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand};
-use game_localizer::commands::check::CheckResult;
+use graft::commands::check::CheckResult;
 
 #[derive(Parser)]
-#[command(name = "game-localizer")]
-#[command(about = "Tools for binary patching game files")]
+#[command(name = "graft")]
+#[command(about = "Binary patching toolkit")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -105,7 +105,7 @@ fn main() {
     match cli.command {
         Commands::Diff { command } => match command {
             DiffCommands::Create { orig, new, diff } => {
-                match game_localizer::commands::diff_create::run(&orig, &new, &diff) {
+                match graft::commands::diff_create::run(&orig, &new, &diff) {
                     Ok(()) => {
                         println!("Diff written to {}", diff.display());
                     }
@@ -116,7 +116,7 @@ fn main() {
                 }
             }
             DiffCommands::Apply { orig, diff, output } => {
-                match game_localizer::commands::diff_apply::run(&orig, &diff, &output) {
+                match graft::commands::diff_apply::run(&orig, &diff, &output) {
                     Ok(()) => {
                         println!("Output written to {}", output.display());
                     }
@@ -129,7 +129,7 @@ fn main() {
         }
         Commands::Hash { command } => match command {
             HashCommands::Calculate { file } => {
-                match game_localizer::commands::calculate::run(&file) {
+                match graft::commands::calculate::run(&file) {
                     Ok(result) => {
                         println!("Hash for file {}: {}", file.display(), result);
                     }
@@ -140,7 +140,7 @@ fn main() {
                 }
             }
             HashCommands::Compare { file1, file2 } => {
-                match game_localizer::commands::compare::run(&file1, &file2) {
+                match graft::commands::compare::run(&file1, &file2) {
                     Ok(result) => {
                         println!("{}: {}", file1.display(), result.hash1);
                         println!("{}: {}", file2.display(), result.hash2);
@@ -158,7 +158,7 @@ fn main() {
                 }
             }
             HashCommands::Check { hash, file } => {
-                match game_localizer::commands::check::run(&hash, &file) {
+                match graft::commands::check::run(&hash, &file) {
                     Ok(result) => match result {
                         CheckResult::Match => {
                             println!("Hash match");
@@ -183,7 +183,7 @@ fn main() {
                 output,
                 version,
             } => {
-                match game_localizer::commands::patch_create::run(&orig, &new, &output, version) {
+                match graft::commands::patch_create::run(&orig, &new, &output, version) {
                     Ok(()) => {
                         println!("Patch created at {}", output.display());
                     }
@@ -194,7 +194,7 @@ fn main() {
                 }
             }
             PatchCommands::Apply { target, patch } => {
-                match game_localizer::commands::patch_apply::run(&target, &patch) {
+                match graft::commands::patch_apply::run(&target, &patch) {
                     Ok(()) => {
                         println!("Patch applied successfully");
                     }

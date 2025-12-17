@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use patch_core::utils::hash::hash_bytes;
+use graft_core::utils::hash::hash_bytes;
 
 pub enum CheckResult {
     Match,
@@ -34,7 +34,7 @@ mod tests {
     #[test]
     fn matching_hash_returns_match() {
         let file = create_temp_file(b"test content");
-        let hash = patch_core::utils::hash::hash_bytes(b"test content");
+        let hash = graft_core::utils::hash::hash_bytes(b"test content");
 
         let result = run(&hash, file.path()).unwrap();
 

@@ -1,11 +1,11 @@
 [package]
-name = "game-localizer"
+name = "graft"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
-patch-core = { path = "../patch-core" }
+graft-core = { path = "../graft-core" }
 
 [dev-dependencies]
 tempfile = "3.23.0"

@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::Path;
 
-use patch_core::patch::apply::apply_entry;
-use patch_core::patch::verify::verify_entry;
-use patch_core::patch::{PatchError, BACKUP_DIR, MANIFEST_FILENAME};
-use patch_core::utils::file_ops::{backup_file, restore_file};
-use patch_core::utils::hash::hash_bytes;
-use patch_core::utils::manifest::{Manifest, ManifestEntry};
+use graft_core::patch::apply::apply_entry;
+use graft_core::patch::verify::verify_entry;
+use graft_core::patch::{PatchError, BACKUP_DIR, MANIFEST_FILENAME};
+use graft_core::utils::file_ops::{backup_file, restore_file};
+use graft_core::utils::hash::hash_bytes;
+use graft_core::utils::manifest::{Manifest, ManifestEntry};
 
 /// Apply a patch to a target directory.
 ///

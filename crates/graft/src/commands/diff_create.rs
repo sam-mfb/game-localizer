@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use patch_core::utils::diff::create_diff;
+use graft_core::utils::diff::create_diff;
 
 pub fn run(orig: &Path, new: &Path, diff_out: &Path) -> io::Result<()> {
     let orig_data = fs::read(orig)?;

@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/patch-core",
-    "crates/game-localizer",
+    "crates/graft-core",
+    "crates/graft",
 ]
 resolver = "2"

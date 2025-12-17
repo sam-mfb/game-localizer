@@ -171,15 +171,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
-name = "game-localizer"
-version = "0.1.0"
-dependencies = [
- "clap",
- "patch-core",
- "tempfile",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -199,6 +190,26 @@ dependencies = [
  "libc",
  "r-efi",
  "wasip2",
+]
+
+[[package]]
+name = "graft"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "graft-core",
+ "tempfile",
+]
+
+[[package]]
+name = "graft-core"
+version = "0.1.0"
+dependencies = [
+ "bsdiff",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
@@ -248,17 +259,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "patch-core"
-version = "0.1.0"
-dependencies = [
- "bsdiff",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
-]
 
 [[package]]
 name = "proc-macro2"
