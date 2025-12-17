@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::Path;
 
-use crate::patch::apply::apply_entry;
-use crate::patch::verify::verify_entry;
-use crate::patch::{PatchError, BACKUP_DIR, MANIFEST_FILENAME};
-use crate::utils::file_ops::{backup_file, restore_file};
-use crate::utils::hash::hash_bytes;
-use crate::utils::manifest::{Manifest, ManifestEntry};
+use patch_core::patch::apply::apply_entry;
+use patch_core::patch::verify::verify_entry;
+use patch_core::patch::{PatchError, BACKUP_DIR, MANIFEST_FILENAME};
+use patch_core::utils::file_ops::{backup_file, restore_file};
+use patch_core::utils::hash::hash_bytes;
+use patch_core::utils::manifest::{Manifest, ManifestEntry};
 
 /// Apply a patch to a target directory.
 ///

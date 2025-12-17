@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::utils::hash::hash_bytes;
+use patch_core::utils::hash::hash_bytes;
 
 pub struct CompareResult {
     pub hash1: String,

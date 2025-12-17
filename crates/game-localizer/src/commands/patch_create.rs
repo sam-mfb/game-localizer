@@ -2,11 +2,11 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::patch::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
-use crate::utils::diff::create_diff;
-use crate::utils::dir_scan::{categorize_files, FileChange};
-use crate::utils::hash::hash_bytes;
-use crate::utils::manifest::{Manifest, ManifestEntry};
+use patch_core::patch::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
+use patch_core::utils::diff::create_diff;
+use patch_core::utils::dir_scan::{categorize_files, FileChange};
+use patch_core::utils::hash::hash_bytes;
+use patch_core::utils::manifest::{Manifest, ManifestEntry};
 
 /// Create a patch from two directories.
 /// Outputs a patch directory containing manifest.json, diffs/, and files/.
@@ -90,7 +90,7 @@ pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::diff::apply_diff;
+    use patch_core::utils::diff::apply_diff;
     use tempfile::tempdir;
 
     #[test]
