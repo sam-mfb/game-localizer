@@ -1,9 +1,9 @@
 use crate::runner::{PatchRunner, ProgressEvent};
+use crate::validator::PatchValidator;
 use std::io::{self, Write};
 use std::path::Path;
 
 /// Run in headless (CLI) mode with embedded patch data
-#[allow(dead_code)] // Only used when embedded_patch feature is enabled
 pub fn run_headless(
     patch_data: &[u8],
     target_path: &Path,
@@ -12,15 +12,14 @@ pub fn run_headless(
     println!("Graft Patcher - Headless Mode");
     println!("==============================");
 
-    // Extract patch
-    print!("Extracting patch data... ");
+    // Validate patch and get info
+    print!("Validating patch data... ");
     io::stdout().flush()?;
 
-    let runner = PatchRunner::extract(patch_data)?;
+    let info = PatchValidator::validate(patch_data)?;
     println!("done");
 
     // Show patch info
-    let info = runner.info();
     println!("\nPatch Information:");
     println!("  Version: {}", info.version);
     println!("  Operations: {}", info.entry_count);
@@ -42,18 +41,20 @@ pub fn run_headless(
         }
     }
 
-    // Apply patch with progress callback
+    // Create runner and apply patch
     println!("\nApplying patch...");
 
+    let runner = PatchRunner::new(patch_data)?;
     let result = runner.apply(target_path, |event| {
         match event {
             ProgressEvent::Processing { file, index, total } => {
                 print!("  [{}/{}] {}... ", index + 1, total, file);
                 let _ = io::stdout().flush();
             }
-            ProgressEvent::Done { .. } => {
-                // Final "ok" is printed after the last Processing event
+            ProgressEvent::Processed { .. } => {
+                println!("ok");
             }
+            ProgressEvent::Done { .. } => {}
             ProgressEvent::Error { .. } => {
                 println!("FAILED");
             }
@@ -62,7 +63,6 @@ pub fn run_headless(
 
     match result {
         Ok(()) => {
-            println!("ok"); // For the last file
             println!("\nPatch applied successfully!");
             Ok(())
         }

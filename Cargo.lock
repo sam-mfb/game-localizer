@@ -1347,6 +1347,7 @@ dependencies = [
  "flate2",
  "graft-core",
  "rfd",
+ "serde_json",
  "tar",
  "tempfile",
 ]

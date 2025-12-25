@@ -25,9 +25,11 @@
 //! - **Demo mode**: `graft-gui demo` - GUI with mock data for development
 //! - **Headless mode**: `graft-gui headless <path>` - CLI-only for scripting
 
+#[cfg(feature = "embedded_patch")]
 mod cli;
 mod gui;
 mod runner;
+mod validator;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

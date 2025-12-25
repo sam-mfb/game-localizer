@@ -1,6 +1,6 @@
 use flate2::read::GzDecoder;
 use graft_core::patch::{apply::apply_entry, PatchError, MANIFEST_FILENAME};
-use graft_core::utils::manifest::{Manifest, ManifestEntry};
+use graft_core::utils::manifest::Manifest;
 use std::path::{Path, PathBuf};
 use tar::Archive;
 
@@ -9,65 +9,23 @@ use tar::Archive;
 pub enum ProgressEvent {
     /// Starting to process a file
     Processing { file: String, index: usize, total: usize },
+    /// File processed successfully
+    Processed { index: usize, total: usize },
     /// Patch completed successfully
     Done { files_patched: usize },
     /// An error occurred
     Error { message: String, details: Option<String> },
 }
 
-/// Patch metadata extracted from manifest
-#[derive(Debug, Clone)]
-pub struct PatchInfo {
-    pub version: u32,
-    pub entry_count: usize,
-    pub patches: usize,
-    pub additions: usize,
-    pub deletions: usize,
-}
-
-impl PatchInfo {
-    pub fn from_manifest(manifest: &Manifest) -> Self {
-        let mut patches = 0;
-        let mut additions = 0;
-        let mut deletions = 0;
-        for entry in &manifest.entries {
-            match entry {
-                ManifestEntry::Patch { .. } => patches += 1,
-                ManifestEntry::Add { .. } => additions += 1,
-                ManifestEntry::Delete { .. } => deletions += 1,
-            }
-        }
-        PatchInfo {
-            version: manifest.version,
-            entry_count: manifest.entries.len(),
-            patches,
-            additions,
-            deletions,
-        }
-    }
-
-    /// Mock patch info for demo mode
-    pub fn mock() -> Self {
-        PatchInfo {
-            version: 1,
-            entry_count: 42,
-            patches: 35,
-            additions: 5,
-            deletions: 2,
-        }
-    }
-}
-
 /// Core patch runner that handles extraction and application
 pub struct PatchRunner {
     patch_dir: PathBuf,
     manifest: Manifest,
-    info: PatchInfo,
 }
 
 impl PatchRunner {
-    /// Extract patch from compressed tar.gz data
-    pub fn extract(data: &[u8]) -> Result<Self, PatchRunnerError> {
+    /// Create a new runner from compressed patch data
+    pub fn new(data: &[u8]) -> Result<Self, PatchRunnerError> {
         // Create temp directory for extracted patch
         let temp_dir = tempfile::tempdir()
             .map_err(|e| PatchRunnerError::ExtractionFailed(format!("Failed to create temp directory: {}", e)))?;
@@ -84,21 +42,13 @@ impl PatchRunner {
         let manifest = Manifest::load(&manifest_path)
             .map_err(|e| PatchRunnerError::ManifestLoadFailed(format!("Failed to load manifest: {}", e)))?;
 
-        let info = PatchInfo::from_manifest(&manifest);
-
         // Keep temp_dir alive by converting to path
         let patch_dir = temp_dir.keep();
 
         Ok(PatchRunner {
             patch_dir,
             manifest,
-            info,
         })
-    }
-
-    /// Get patch metadata
-    pub fn info(&self) -> &PatchInfo {
-        &self.info
     }
 
     /// Apply patch to target directory with progress callback
@@ -127,6 +77,8 @@ impl PatchRunner {
                 });
                 return Err(e);
             }
+
+            on_progress(ProgressEvent::Processed { index: i, total });
         }
 
         on_progress(ProgressEvent::Done {

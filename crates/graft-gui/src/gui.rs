@@ -1,4 +1,5 @@
-use crate::runner::{PatchInfo, PatchRunner, PatchRunnerError, ProgressEvent};
+use crate::runner::{PatchRunner, ProgressEvent};
+use crate::validator::{PatchInfo, PatchValidationError, PatchValidator};
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -29,36 +30,23 @@ pub enum AppState {
     },
 }
 
-/// Progress update message from worker thread (mirrors ProgressEvent for channel use)
-#[derive(Debug)]
-pub enum ProgressMessage {
-    Processing { file: String, index: usize, total: usize },
-    Done { files_patched: usize },
-    Error { message: String, details: Option<String> },
-}
-
-impl From<ProgressEvent> for ProgressMessage {
-    fn from(event: ProgressEvent) -> Self {
-        match event {
-            ProgressEvent::Processing { file, index, total } => {
-                ProgressMessage::Processing { file, index, total }
-            }
-            ProgressEvent::Done { files_patched } => ProgressMessage::Done { files_patched },
-            ProgressEvent::Error { message, details } => ProgressMessage::Error { message, details },
-        }
-    }
+/// Application mode
+pub enum Mode {
+    /// Demo mode with mock data for UI development
+    Demo,
+    /// Real mode with embedded patch data
+    Embedded {
+        patch_data: Vec<u8>,
+        /// Channel for receiving progress updates from worker thread (Some when applying)
+        progress_rx: Option<mpsc::Receiver<ProgressEvent>>,
+    },
 }
 
 /// Main application struct
 pub struct GraftApp {
     state: AppState,
     patch_info: PatchInfo,
-    /// Raw patch data (None for demo mode, worker thread creates runner from this)
-    patch_data: Option<Vec<u8>>,
-    /// Channel for receiving progress updates from worker thread
-    progress_rx: Option<mpsc::Receiver<ProgressMessage>>,
-    /// Demo mode flag
-    demo_mode: bool,
+    mode: Mode,
     /// Text input for manual path entry
     path_input: String,
 }
@@ -69,29 +57,25 @@ impl GraftApp {
         GraftApp {
             state: AppState::Welcome,
             patch_info: PatchInfo::mock(),
-            patch_data: None,
-            progress_rx: None,
-            demo_mode: true,
+            mode: Mode::Demo,
             path_input: String::new(),
         }
     }
 
     /// Create a new app with patch data
     ///
-    /// Extracts the patch once to get PatchInfo for display, then stores
+    /// Validates the patch to get PatchInfo for display, then stores
     /// the raw data for the worker thread to use when applying.
-    pub fn new(patch_data: Vec<u8>) -> Result<Self, PatchRunnerError> {
-        // Extract once to get patch info for the Welcome screen
-        let runner = PatchRunner::extract(&patch_data)?;
-        let patch_info = runner.info().clone();
-        // Runner is dropped here - worker thread will create its own
+    pub fn new(patch_data: Vec<u8>) -> Result<Self, PatchValidationError> {
+        let patch_info = PatchValidator::validate(&patch_data)?;
 
         Ok(GraftApp {
             state: AppState::Welcome,
             patch_info,
-            patch_data: Some(patch_data),
-            progress_rx: None,
-            demo_mode: false,
+            mode: Mode::Embedded {
+                patch_data,
+                progress_rx: None,
+            },
             path_input: String::new(),
         })
     }
@@ -103,22 +87,26 @@ impl GraftApp {
     }
 
     fn start_apply(&mut self, target_path: PathBuf) {
-        if self.demo_mode {
-            // Demo mode: simulate applying
-            self.state = AppState::Applying {
-                path: target_path,
-                current_file: "demo_file.bin".to_string(),
-                progress: 0.0,
-                total: self.patch_info.entry_count,
-                completed: 0,
-            };
-            return;
-        }
+        let patch_data = match &mut self.mode {
+            Mode::Demo => {
+                // Demo mode: simulate applying
+                self.state = AppState::Applying {
+                    path: target_path,
+                    current_file: "demo_file.bin".to_string(),
+                    progress: 0.0,
+                    total: self.patch_info.entry_count,
+                    completed: 0,
+                };
+                return;
+            }
+            Mode::Embedded { patch_data, progress_rx } => {
+                let data = patch_data.clone();
+                let (tx, rx) = mpsc::channel();
+                *progress_rx = Some(rx);
+                (data, tx)
+            }
+        };
 
-        let (tx, rx) = mpsc::channel();
-        self.progress_rx = Some(rx);
-
-        let patch_data = self.patch_data.clone().unwrap();
         let total = self.patch_info.entry_count;
 
         self.state = AppState::Applying {
@@ -129,13 +117,15 @@ impl GraftApp {
             completed: 0,
         };
 
+        let (patch_data, tx) = patch_data;
+
         // Worker thread creates and owns its own runner
         thread::spawn(move || {
-            let runner = match PatchRunner::extract(&patch_data) {
+            let runner = match PatchRunner::new(&patch_data) {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = tx.send(ProgressMessage::Error {
-                        message: "Failed to extract patch".to_string(),
+                    let _ = tx.send(ProgressEvent::Error {
+                        message: "Failed to create patch runner".to_string(),
                         details: Some(e.to_string()),
                     });
                     return;
@@ -143,24 +133,28 @@ impl GraftApp {
             };
 
             let _ = runner.apply(&target_path, |event| {
-                let _ = tx.send(ProgressMessage::from(event));
+                let _ = tx.send(event);
             });
         });
     }
 
     fn process_progress_messages(&mut self) {
+        let progress_rx = match &mut self.mode {
+            Mode::Demo => return,
+            Mode::Embedded { progress_rx, .. } => progress_rx,
+        };
+
         // Collect messages first to avoid borrow issues
-        let messages: Vec<_> = self
-            .progress_rx
+        let messages: Vec<_> = progress_rx
             .as_ref()
             .map(|rx| rx.try_iter().collect())
             .unwrap_or_default();
 
         let mut should_clear_rx = false;
 
-        for msg in messages {
-            match msg {
-                ProgressMessage::Processing { file, index, total } => {
+        for event in messages {
+            match event {
+                ProgressEvent::Processing { file, index, total } => {
                     if let AppState::Applying { path, .. } = &self.state {
                         self.state = AppState::Applying {
                             path: path.clone(),
@@ -171,7 +165,19 @@ impl GraftApp {
                         };
                     }
                 }
-                ProgressMessage::Done { files_patched } => {
+                ProgressEvent::Processed { index, total } => {
+                    if let AppState::Applying { path, current_file, .. } = &self.state {
+                        let completed = index + 1;
+                        self.state = AppState::Applying {
+                            path: path.clone(),
+                            current_file: current_file.clone(),
+                            progress: completed as f32 / total as f32,
+                            total,
+                            completed,
+                        };
+                    }
+                }
+                ProgressEvent::Done { files_patched } => {
                     if let AppState::Applying { path, .. } = &self.state {
                         self.state = AppState::Success {
                             path: path.clone(),
@@ -180,7 +186,7 @@ impl GraftApp {
                     }
                     should_clear_rx = true;
                 }
-                ProgressMessage::Error { message, details } => {
+                ProgressEvent::Error { message, details } => {
                     self.state = AppState::Error {
                         message,
                         details,
@@ -192,7 +198,7 @@ impl GraftApp {
         }
 
         if should_clear_rx {
-            self.progress_rx = None;
+            *progress_rx = None;
         }
     }
 
@@ -239,7 +245,7 @@ impl GraftApp {
             }
         });
 
-        if self.demo_mode {
+        if matches!(self.mode, Mode::Demo) {
             ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("(Demo Mode)")
@@ -294,7 +300,7 @@ impl GraftApp {
         ui.label(format!("{} / {} operations completed", completed, total));
 
         // Demo mode: simulate progress
-        if self.demo_mode {
+        if matches!(self.mode, Mode::Demo) {
             ui.add_space(16.0);
             ui.horizontal(|ui| {
                 if ui.button("Simulate Progress").clicked() {
