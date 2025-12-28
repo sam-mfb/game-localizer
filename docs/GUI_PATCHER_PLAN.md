@@ -20,28 +20,40 @@ Create a tool that takes a patch directory and produces self-contained GUI execu
 graft/
 ├── Cargo.toml                    # Workspace root
 ├── crates/
-│   ├── graft-core/               # Shared library (done)
+│   ├── graft-core/               # Shared library
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── patch/            # apply.rs, verify.rs, mod.rs
-│   │       └── utils/            # manifest.rs, diff.rs, hash.rs, file_ops.rs
+│   │       ├── patch/
+│   │       │   ├── mod.rs        # Re-exports
+│   │       │   ├── constants.rs  # DIFFS_DIR, FILES_DIR, etc.
+│   │       │   ├── error.rs      # PatchError enum
+│   │       │   ├── apply.rs      # apply_entry()
+│   │       │   ├── verify.rs     # verify_entry()
+│   │       │   └── validate.rs   # validate_patch_dir()
+│   │       └── utils/
+│   │           ├── manifest.rs   # Manifest, ManifestEntry, PatchInfo
+│   │           ├── diff.rs, hash.rs, file_ops.rs, dir_scan.rs
 │   │
-│   ├── graft/                    # CLI (done)
+│   ├── graft/                    # CLI tool
 │   │   └── src/
 │   │       ├── main.rs
 │   │       └── commands/
 │   │
-│   ├── graft-builder/            # Builder tool (new)
+│   ├── graft-builder/            # Builder tool
 │   │   └── src/
 │   │       ├── main.rs           # CLI: build subcommand
+│   │       ├── lib.rs            # Public API
 │   │       ├── builder.rs        # Orchestrates build process
 │   │       ├── archive.rs        # Creates tar.gz of patch
-│   │       └── template.rs       # Generates Rust project
+│   │       └── error.rs          # BuildError enum
 │   │
-│   └── graft-gui/                # GUI app template (new)
+│   └── graft-gui/                # GUI patcher application
 │       └── src/
-│           ├── main.rs           # Entry point with embedded data
-│           └── app.rs            # egui application
+│           ├── main.rs           # Entry point, demo/headless modes
+│           ├── gui.rs            # egui application, state machine
+│           ├── cli.rs            # Headless mode implementation
+│           ├── runner.rs         # PatchRunner, ProgressEvent
+│           └── validator.rs      # PatchValidator (archive validation)
 ```
 
 ## Embedding Strategy
@@ -68,7 +80,7 @@ At runtime: extract to temp dir, load manifest, apply patch.
 4. **Success** - Green checkmark, done message
 5. **Error** - Red X, error details, "Show Details" expander
 
-**Demo mode** (`cargo run -p graft-gui -- --demo`):
+**Demo mode** (`cargo run -p graft-gui -- demo`):
 - Uses mock manifest data (no real patch embedded)
 - Simulates state transitions without touching filesystem
 - For UI development and testing appearance of all states
@@ -76,8 +88,8 @@ At runtime: extract to temp dir, load manifest, apply patch.
 **Headless mode** (for generated patchers):
 ```bash
 ./my-patcher                        # Launch GUI (default)
-./my-patcher --headless <target>    # CLI mode, no GUI
-./my-patcher --headless <target> -y # Skip confirmation prompt
+./my-patcher headless <target>      # CLI mode, no GUI
+./my-patcher headless <target> -y   # Skip confirmation prompt
 ```
 - Same binary supports both GUI and CLI
 - Useful for advanced users and E2E testing
@@ -97,12 +109,17 @@ At runtime: extract to temp dir, load manifest, apply patch.
 
 ## CLI Interface
 
+**Current implementation:**
 ```
 graft-builder build <PATCH_DIR> [OPTIONS]
 
 OPTIONS:
     -o, --output <DIR>       Output directory [default: ./dist]
-    -n, --name <NAME>        Patcher name [default: from manifest]
+    -n, --name <NAME>        Patcher name [default: patcher]
+```
+
+**Planned options (Phase 4+):**
+```
     --targets <TARGETS>      linux-x64,linux-arm64,windows,macos-x64,macos-arm64
                              [default: linux-x64,linux-arm64,windows]
     --locales <LOCALES>      Locales to include [default: en]
@@ -124,13 +141,14 @@ OPTIONS:
 - Folder selection with `rfd`
 - Progress display during apply
 - Success/error views
-- Headless mode (`--headless <target>`)
+- Headless mode (`headless <target>`)
 
-### Phase 3: Builder Tool (`graft-builder`)
+### Phase 3: Builder Tool (`graft-builder`) ✓
 - CLI with clap
 - Archive creation (tar.gz patch data)
-- Template project generation
+- Template project generation (writes main.rs with embedded patch)
 - Local `cargo build --release` integration
+- Shared validation logic in `graft-core::patch::validate`
 
 ### Phase 4: Cross-Compilation (Linux + Windows)
 - Add Cross.toml configuration
@@ -166,14 +184,17 @@ sha2 = "0.10"
 
 **graft-gui:**
 ```toml
-eframe = "0.29"
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
 rfd = "0.15"
 tar = "0.4"
 flate2 = "1.0"
 tempfile = "3"
-rust-i18n = "3"                   # Localization
-sys-locale = "0.3"                # Detect system locale
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
 graft-core = { path = "../graft-core" }
+# Phase 6 additions:
+# rust-i18n = "3"                 # Localization
+# sys-locale = "0.3"              # Detect system locale
 ```
 
 **graft-builder:**
@@ -181,20 +202,19 @@ graft-core = { path = "../graft-core" }
 clap = { version = "4", features = ["derive"] }
 tar = "0.4"
 flate2 = "1.0"
-tempfile = "3"
 graft-core = { path = "../graft-core" }
 ```
 
 ## Cross-Compilation Targets
 
-**Phase 1 - via `cross` (Docker):**
+**Phase 4 - Linux + Windows via `cross` (Docker):**
 | Target | Output Name | Notes |
 |--------|-------------|-------|
 | x86_64-unknown-linux-gnu | patcher-linux-x64 | Default |
 | aarch64-unknown-linux-gnu | patcher-linux-arm64 | ARM64 Linux |
 | x86_64-pc-windows-gnu | patcher-windows.exe | Default |
 
-**Phase 2 - macOS:**
+**Phase 5 - macOS:**
 | Target | Output Name | Notes |
 |--------|-------------|-------|
 | x86_64-apple-darwin | patcher-macos-x64 | Intel Mac |
