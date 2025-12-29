@@ -3,18 +3,48 @@ use flate2::Compression;
 use graft_core::patch;
 use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tar::Builder;
+
+/// A temporary archive file that cleans itself up when dropped.
+///
+/// This type implements RAII - the archive file is automatically
+/// deleted when the `ArchiveFile` goes out of scope.
+pub struct ArchiveFile {
+    path: PathBuf,
+}
+
+impl ArchiveFile {
+    /// Create a tar.gz archive from a patch directory and write it to the output path.
+    ///
+    /// The archive will contain:
+    /// - manifest.json (required)
+    /// - diffs/*.diff (if present)
+    /// - files/* (if present)
+    pub fn create(patch_dir: &Path, output_path: &Path) -> io::Result<Self> {
+        let data = create_archive_bytes(patch_dir)?;
+        let mut file = File::create(output_path)?;
+        file.write_all(&data)?;
+        Ok(Self {
+            path: output_path.to_path_buf(),
+        })
+    }
+}
+
+impl Drop for ArchiveFile {
+    fn drop(&mut self) {
+        if self.path.exists() {
+            if let Err(e) = fs::remove_file(&self.path) {
+                eprintln!("Warning: failed to clean up archive: {}", e);
+            }
+        }
+    }
+}
 
 /// Create a tar.gz archive from a patch directory.
 ///
-/// The archive will contain:
-/// - manifest.json (required)
-/// - diffs/*.diff (if present)
-/// - files/* (if present)
-///
 /// Returns the compressed bytes.
-pub fn create_archive(patch_dir: &Path) -> io::Result<Vec<u8>> {
+fn create_archive_bytes(patch_dir: &Path) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
 
     {
@@ -67,12 +97,6 @@ fn add_directory_contents<W: Write>(
     Ok(())
 }
 
-/// Write archive bytes to a file
-pub fn write_archive(data: &[u8], output_path: &Path) -> io::Result<()> {
-    let mut file = File::create(output_path)?;
-    file.write_all(data)?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -92,7 +116,7 @@ mod tests {
         )
         .unwrap();
 
-        let archive_data = create_archive(patch_dir.path()).unwrap();
+        let archive_data = create_archive_bytes(patch_dir.path()).unwrap();
 
         // Verify it's valid gzip + tar
         let decoder = GzDecoder::new(&archive_data[..]);
@@ -115,7 +139,7 @@ mod tests {
         fs::create_dir(patch_dir.path().join("diffs")).unwrap();
         fs::write(patch_dir.path().join("diffs/file.diff"), b"diff data").unwrap();
 
-        let archive_data = create_archive(patch_dir.path()).unwrap();
+        let archive_data = create_archive_bytes(patch_dir.path()).unwrap();
 
         let decoder = GzDecoder::new(&archive_data[..]);
         let mut archive = Archive::new(decoder);
@@ -149,7 +173,7 @@ mod tests {
         )
         .unwrap();
 
-        let archive_data = create_archive(patch_dir.path()).unwrap();
+        let archive_data = create_archive_bytes(patch_dir.path()).unwrap();
 
         let decoder = GzDecoder::new(&archive_data[..]);
         let mut archive = Archive::new(decoder);

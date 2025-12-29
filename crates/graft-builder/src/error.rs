@@ -18,8 +18,6 @@ pub enum BuildError {
     BinaryNotFound(PathBuf),
     /// Failed to copy binary to output
     CopyFailed { from: PathBuf, to: PathBuf, source: io::Error },
-    /// Failed to clean up temporary files
-    CleanupFailed(io::Error),
     /// Could not determine workspace root
     WorkspaceNotFound,
 }
@@ -59,9 +57,6 @@ impl fmt::Display for BuildError {
                     source
                 )
             }
-            BuildError::CleanupFailed(e) => {
-                write!(f, "failed to clean up temporary files: {}", e)
-            }
             BuildError::WorkspaceNotFound => {
                 write!(f, "could not determine cargo workspace root")
             }
@@ -76,7 +71,6 @@ impl std::error::Error for BuildError {
             BuildError::ArchiveCreationFailed(e) => Some(e),
             BuildError::OutputDirCreationFailed { source, .. } => Some(source),
             BuildError::CopyFailed { source, .. } => Some(source),
-            BuildError::CleanupFailed(e) => Some(e),
             _ => None,
         }
     }

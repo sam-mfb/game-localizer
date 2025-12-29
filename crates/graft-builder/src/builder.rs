@@ -35,26 +35,14 @@ pub fn build(patch_dir: &Path, output_dir: &Path, name: Option<&str>) -> Result<
     let graft_gui_dir = workspace_root.join("crates/graft-gui");
     let archive_path = graft_gui_dir.join("patch_data.tar.gz");
 
-    // Step 3: Create the archive
+    // Step 3: Create the archive (automatically cleaned up when _archive is dropped)
     println!("Creating patch archive...");
-    let archive_data =
-        archive::create_archive(patch_dir).map_err(BuildError::ArchiveCreationFailed)?;
-
-    archive::write_archive(&archive_data, &archive_path)
+    let _archive = archive::ArchiveFile::create(patch_dir, &archive_path)
         .map_err(BuildError::ArchiveCreationFailed)?;
 
     // Step 4: Run cargo build
     println!("Building graft-gui with embedded patch...");
-    let build_result = run_cargo_build(&workspace_root);
-
-    // Step 5: Clean up the archive file (do this before checking build result)
-    // We want to clean up even if build fails
-    if let Err(e) = cleanup_archive(&archive_path) {
-        eprintln!("Warning: failed to clean up archive: {}", e);
-    }
-
-    // Now check build result
-    build_result?;
+    run_cargo_build(&workspace_root)?;
 
     // Step 6: Create output directory
     fs::create_dir_all(output_dir).map_err(|e| BuildError::OutputDirCreationFailed {
@@ -159,14 +147,6 @@ fn get_release_binary_path(workspace_root: &Path) -> PathBuf {
     };
 
     workspace_root.join("target/release").join(binary_name)
-}
-
-/// Clean up the temporary archive file
-fn cleanup_archive(archive_path: &Path) -> Result<(), BuildError> {
-    if archive_path.exists() {
-        fs::remove_file(archive_path).map_err(BuildError::CleanupFailed)?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
