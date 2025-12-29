@@ -8,7 +8,5 @@ description = "Build self-contained GUI patchers from graft patches"
 clap = { version = "4", features = ["derive"] }
 tar = "0.4"
 flate2 = "1.0"
-graft-core = { path = "../graft-core" }
-
-[dev-dependencies]
 tempfile = "3"
+graft-core = { path = "../graft-core" }

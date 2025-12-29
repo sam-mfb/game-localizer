@@ -1,43 +1,43 @@
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use graft_core::patch;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tar::Builder;
+use tempfile::NamedTempFile;
 
 /// A temporary archive file that cleans itself up when dropped.
 ///
 /// This type implements RAII - the archive file is automatically
-/// deleted when the `ArchiveFile` goes out of scope.
+/// deleted when the `ArchiveFile` goes out of scope (via NamedTempFile).
 pub struct ArchiveFile {
-    path: PathBuf,
+    temp_file: NamedTempFile,
 }
 
 impl ArchiveFile {
-    /// Create a tar.gz archive from a patch directory and write it to the output path.
+    /// Create a tar.gz archive from a patch directory in a temporary location.
     ///
     /// The archive will contain:
     /// - manifest.json (required)
     /// - diffs/*.diff (if present)
     /// - files/* (if present)
-    pub fn create(patch_dir: &Path, output_path: &Path) -> io::Result<Self> {
-        let data = create_archive_bytes(patch_dir)?;
-        let mut file = File::create(output_path)?;
-        file.write_all(&data)?;
-        Ok(Self {
-            path: output_path.to_path_buf(),
-        })
-    }
-}
+    ///
+    /// Use `path()` to get the location of the archive.
+    pub fn create(patch_dir: &Path) -> io::Result<Self> {
+        let temp_file = tempfile::Builder::new()
+            .suffix(".tar.gz")
+            .tempfile()?;
 
-impl Drop for ArchiveFile {
-    fn drop(&mut self) {
-        if self.path.exists() {
-            if let Err(e) = fs::remove_file(&self.path) {
-                eprintln!("Warning: failed to clean up archive: {}", e);
-            }
-        }
+        let data = create_archive_bytes(patch_dir)?;
+        temp_file.as_file().write_all(&data)?;
+
+        Ok(Self { temp_file })
+    }
+
+    /// Get the path to the temporary archive file.
+    pub fn path(&self) -> &Path {
+        self.temp_file.path()
     }
 }
 

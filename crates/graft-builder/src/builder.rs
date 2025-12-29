@@ -32,17 +32,15 @@ pub fn build(patch_dir: &Path, output_dir: &Path, name: Option<&str>) -> Result<
 
     // Step 2: Find workspace root
     let workspace_root = find_workspace_root()?;
-    let graft_gui_dir = workspace_root.join("crates/graft-gui");
-    let archive_path = graft_gui_dir.join("patch_data.tar.gz");
 
-    // Step 3: Create the archive (automatically cleaned up when _archive is dropped)
+    // Step 3: Create the archive in temp location (cleaned up when archive is dropped)
     println!("Creating patch archive...");
-    let _archive = archive::ArchiveFile::create(patch_dir, &archive_path)
+    let archive = archive::ArchiveFile::create(patch_dir)
         .map_err(BuildError::ArchiveCreationFailed)?;
 
-    // Step 4: Run cargo build
+    // Step 4: Run cargo build with archive path passed via env var
     println!("Building graft-gui with embedded patch...");
-    run_cargo_build(&workspace_root)?;
+    run_cargo_build(&workspace_root, archive.path())?;
 
     // Step 6: Create output directory
     fs::create_dir_all(output_dir).map_err(|e| BuildError::OutputDirCreationFailed {
@@ -102,7 +100,7 @@ fn find_workspace_root() -> Result<PathBuf, BuildError> {
 }
 
 /// Run cargo build for graft-gui with embedded_patch feature
-fn run_cargo_build(workspace_root: &Path) -> Result<(), BuildError> {
+fn run_cargo_build(workspace_root: &Path, archive_path: &Path) -> Result<(), BuildError> {
     let output = Command::new("cargo")
         .args([
             "build",
@@ -112,6 +110,7 @@ fn run_cargo_build(workspace_root: &Path) -> Result<(), BuildError> {
             "--features",
             "embedded_patch",
         ])
+        .env("GRAFT_PATCH_ARCHIVE", archive_path)
         .current_dir(workspace_root)
         .output()
         .map_err(|e| BuildError::CargoBuildFailed {

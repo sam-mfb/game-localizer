@@ -14,7 +14,7 @@
 //! The `graft-builder` tool uses this crate as a template to generate standalone
 //! patcher executables. It compiles this crate with:
 //! - The `embedded_patch` feature enabled
-//! - A `patch_data.tar.gz` file containing the patch to apply
+//! - The `GRAFT_PATCH_ARCHIVE` env var pointing to the patch archive
 //!
 //! The generated patcher is a self-contained executable that users can run to
 //! apply a specific patch - no separate patch files needed.
@@ -76,7 +76,7 @@ fn run_gui(is_demo: bool) -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "embedded_patch")]
     {
-        const PATCH_DATA: &[u8] = include_bytes!("../patch_data.tar.gz");
+        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
         return gui::run(Some(PATCH_DATA)).map_err(|e| e.into());
     }
 
@@ -96,7 +96,7 @@ fn run_gui(is_demo: bool) -> Result<(), Box<dyn std::error::Error>> {
 fn run_headless(target_path: &PathBuf, skip_confirm: bool) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "embedded_patch")]
     {
-        const PATCH_DATA: &[u8] = include_bytes!("../patch_data.tar.gz");
+        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
         return cli::run_headless(PATCH_DATA, target_path, skip_confirm);
     }
 
