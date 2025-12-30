@@ -97,6 +97,13 @@ enum PatchCommands {
         /// Directory containing patch files
         patch: PathBuf,
     },
+    /// Rollback a previously applied patch using backup
+    Rollback {
+        /// Target directory to restore
+        target: PathBuf,
+        /// Path to manifest.json (from original patch)
+        manifest: PathBuf,
+    },
 }
 
 fn main() {
@@ -197,6 +204,17 @@ fn main() {
                 match graft::commands::patch_apply::run(&target, &patch) {
                     Ok(()) => {
                         println!("Patch applied successfully");
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
+                }
+            }
+            PatchCommands::Rollback { target, manifest } => {
+                match graft::commands::patch_rollback::run(&target, &manifest) {
+                    Ok(()) => {
+                        println!("Rollback complete");
                     }
                     Err(e) => {
                         eprintln!("Error: {}", e);

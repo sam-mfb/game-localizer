@@ -74,6 +74,13 @@ This will:
 4. Verify results match expected hashes
 5. Rollback automatically on any failure
 
+Rollback a previously applied patch:
+```
+graft patch rollback <target-dir> <manifest-path>
+```
+
+This restores files from `.patch-backup/` to their original state.
+
 ## GUI Patcher
 
 The `graft-gui` crate provides a graphical patcher application.
