@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use graft_core::patch::{
-    apply_entry, backup_entries, rollback, validate_entries, verify_entry, PatchError,
-    BACKUP_DIR, MANIFEST_FILENAME,
+    apply_entries, backup_entries, validate_entries, PatchError, Progress, BACKUP_DIR,
+    MANIFEST_FILENAME,
 };
 use graft_core::utils::manifest::Manifest;
 
@@ -22,27 +22,20 @@ pub fn run(target_dir: &Path, patch_dir: &Path) -> Result<(), PatchError> {
     })?;
 
     // Validate all entries before making any changes
-    validate_entries(&manifest.entries, target_dir)?;
+    validate_entries(&manifest.entries, target_dir, Some(|p: Progress| {
+        println!("Validating [{}/{}]: {}", p.index + 1, p.total, p.file);
+    }))?;
 
     // Backup all files that will be modified/deleted
     let backup_dir = target_dir.join(BACKUP_DIR);
-    backup_entries(&manifest.entries, target_dir, &backup_dir)?;
+    backup_entries(&manifest.entries, target_dir, &backup_dir, Some(|p: Progress| {
+        println!("Backing up [{}/{}]: {}", p.index + 1, p.total, p.file);
+    }))?;
 
-    // Apply each entry, verifying immediately after
-    let mut applied = Vec::new();
-    for entry in &manifest.entries {
-        if let Err(e) = apply_entry(entry, target_dir, patch_dir) {
-            rollback(&applied, target_dir, &backup_dir)?;
-            return Err(e);
-        }
-
-        if let Err(e) = verify_entry(entry, target_dir) {
-            rollback(&applied, target_dir, &backup_dir)?;
-            return Err(e);
-        }
-
-        applied.push(entry);
-    }
+    // Apply each entry with automatic rollback on failure
+    apply_entries(&manifest.entries, target_dir, patch_dir, &backup_dir, Some(|p: Progress| {
+        println!("Applying [{}/{}]: {}", p.index + 1, p.total, p.file);
+    }))?;
 
     Ok(())
 }

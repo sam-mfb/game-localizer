@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use graft_core::patch::{rollback, validate_backup, PatchError, BACKUP_DIR};
+use graft_core::patch::{rollback, validate_backup, PatchError, Progress, BACKUP_DIR};
 use graft_core::utils::manifest::Manifest;
 
 /// Rollback a previously applied patch using the backup directory.
@@ -21,11 +21,15 @@ pub fn run(target_dir: &Path, manifest_path: &Path) -> Result<(), PatchError> {
     }
 
     // Validate backup integrity before rolling back
-    validate_backup(&manifest.entries, &backup_dir)?;
+    validate_backup(&manifest.entries, &backup_dir, Some(|p: Progress| {
+        println!("Validating backup [{}/{}]: {}", p.index + 1, p.total, p.file);
+    }))?;
 
     // Rollback all entries (treat all as "applied")
     let entries: Vec<_> = manifest.entries.iter().collect();
-    rollback(&entries, target_dir, &backup_dir)?;
+    rollback(&entries, target_dir, &backup_dir, Some(|p: Progress| {
+        println!("Restoring [{}/{}]: {}", p.index + 1, p.total, p.file);
+    }))?;
 
     Ok(())
 }

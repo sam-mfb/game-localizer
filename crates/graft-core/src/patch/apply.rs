@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::patch::{PatchError, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR};
+use crate::patch::backup::rollback;
+use crate::patch::verify::verify_entry;
+use crate::patch::{PatchError, Progress, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR};
 use crate::utils::diff::apply_diff;
 use crate::utils::manifest::ManifestEntry;
 
@@ -85,6 +87,53 @@ pub fn apply_entry(
                 })?;
             }
         }
+    }
+
+    Ok(())
+}
+
+/// Apply all entries with progress callback and automatic rollback on failure.
+///
+/// This is a batch operation that:
+/// 1. Iterates over all entries
+/// 2. Calls the progress callback before each entry (if provided)
+/// 3. Applies the entry and verifies the result
+/// 4. On any failure, rolls back all previously applied entries
+///
+/// Note: This assumes backup_entries has already been called to create backups.
+pub fn apply_entries<F>(
+    entries: &[ManifestEntry],
+    target_dir: &Path,
+    patch_dir: &Path,
+    backup_dir: &Path,
+    mut on_progress: Option<F>,
+) -> Result<(), PatchError>
+where
+    F: FnMut(Progress),
+{
+    let total = entries.len();
+    let mut applied = Vec::new();
+
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(ref mut callback) = on_progress {
+            callback(Progress {
+                file: entry.file(),
+                index,
+                total,
+            });
+        }
+
+        if let Err(e) = apply_entry(entry, target_dir, patch_dir) {
+            rollback(&applied, target_dir, backup_dir, None::<fn(Progress)>)?;
+            return Err(e);
+        }
+
+        if let Err(e) = verify_entry(entry, target_dir) {
+            rollback(&applied, target_dir, backup_dir, None::<fn(Progress)>)?;
+            return Err(e);
+        }
+
+        applied.push(entry);
     }
 
     Ok(())

@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 
+use crate::patch::Progress;
 use crate::patch::PatchError;
 use crate::utils::file_ops::{backup_file, restore_file};
 use crate::utils::manifest::ManifestEntry;
@@ -15,12 +16,24 @@ use crate::utils::manifest::ManifestEntry;
 /// - Patch entries: backs up the original file
 /// - Delete entries: backs up the file (if it exists)
 /// - Add entries: nothing to backup (new files)
-pub fn backup_entries(
+pub fn backup_entries<F>(
     entries: &[ManifestEntry],
     target_dir: &Path,
     backup_dir: &Path,
-) -> Result<(), PatchError> {
-    for entry in entries {
+    mut on_progress: Option<F>,
+) -> Result<(), PatchError>
+where
+    F: FnMut(Progress),
+{
+    let total = entries.len();
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(ref mut callback) = on_progress {
+            callback(Progress {
+                file: entry.file(),
+                index,
+                total,
+            });
+        }
         match entry {
             ManifestEntry::Patch { file, .. } | ManifestEntry::Delete { file, .. } => {
                 let target_path = target_dir.join(file);
@@ -50,12 +63,24 @@ pub fn backup_entries(
 /// - Patch entries: restores the original file from backup
 /// - Delete entries: restores the file from backup (if backup exists)
 /// - Add entries: removes the newly added file
-pub fn rollback(
+pub fn rollback<F>(
     applied: &[&ManifestEntry],
     target_dir: &Path,
     backup_dir: &Path,
-) -> Result<(), PatchError> {
-    for entry in applied {
+    mut on_progress: Option<F>,
+) -> Result<(), PatchError>
+where
+    F: FnMut(Progress),
+{
+    let total = applied.len();
+    for (index, entry) in applied.iter().enumerate() {
+        if let Some(ref mut callback) = on_progress {
+            callback(Progress {
+                file: entry.file(),
+                index,
+                total,
+            });
+        }
         match entry {
             ManifestEntry::Patch { file, .. } => {
                 // Patch entries always have backups (validated to exist)

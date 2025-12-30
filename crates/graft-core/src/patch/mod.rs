@@ -5,8 +5,19 @@ mod error;
 pub mod validate;
 pub mod verify;
 
+/// Progress information passed to callbacks during batch operations.
+#[derive(Debug, Clone)]
+pub struct Progress<'a> {
+    /// File being processed
+    pub file: &'a str,
+    /// Current index (0-based)
+    pub index: usize,
+    /// Total number of entries
+    pub total: usize,
+}
+
 // Re-export public items
-pub use apply::apply_entry;
+pub use apply::{apply_entries, apply_entry};
 pub use backup::{backup_entries, rollback};
 pub use constants::{BACKUP_DIR, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
 pub use error::PatchError;

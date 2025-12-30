@@ -1,5 +1,5 @@
 use flate2::read::GzDecoder;
-use graft_core::patch::{self, PatchError};
+use graft_core::patch::{self, PatchError, Progress};
 use graft_core::utils::manifest::Manifest;
 use std::path::{Path, PathBuf};
 use tar::Archive;
@@ -67,11 +67,11 @@ impl PatchRunner {
         let total = self.manifest.entries.len();
 
         // Validate all entries before making any changes
-        patch::validate_entries(&self.manifest.entries, target)?;
+        patch::validate_entries(&self.manifest.entries, target, None::<fn(Progress)>)?;
 
         // Backup all files that will be modified/deleted
         let backup_dir = target.join(patch::BACKUP_DIR);
-        patch::backup_entries(&self.manifest.entries, target, &backup_dir)?;
+        patch::backup_entries(&self.manifest.entries, target, &backup_dir, None::<fn(Progress)>)?;
 
         // Apply each entry, verifying immediately after
         let mut applied = Vec::new();
@@ -85,7 +85,7 @@ impl PatchRunner {
             });
 
             if let Err(e) = patch::apply_entry(entry, target, &self.patch_dir) {
-                patch::rollback(&applied, target, &backup_dir)?;
+                patch::rollback(&applied, target, &backup_dir, None::<fn(Progress)>)?;
                 on_progress(ProgressEvent::Error {
                     message: format!("Failed to apply patch to '{}'", file),
                     details: Some(e.to_string()),
@@ -94,7 +94,7 @@ impl PatchRunner {
             }
 
             if let Err(e) = patch::verify_entry(entry, target) {
-                patch::rollback(&applied, target, &backup_dir)?;
+                patch::rollback(&applied, target, &backup_dir, None::<fn(Progress)>)?;
                 on_progress(ProgressEvent::Error {
                     message: format!("Verification failed for '{}'", file),
                     details: Some(e.to_string()),

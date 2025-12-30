@@ -1,5 +1,6 @@
 use crate::patch::constants::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
 use crate::patch::error::PatchError;
+use crate::patch::Progress;
 use crate::utils::hash::hash_bytes;
 use crate::utils::manifest::{Manifest, ManifestEntry};
 use std::fs;
@@ -60,8 +61,23 @@ pub fn validate_patch_dir(patch_dir: &Path) -> Result<Manifest, PatchError> {
 ///
 /// This should be called before applying any changes to ensure the target
 /// directory is in the expected state.
-pub fn validate_entries(entries: &[ManifestEntry], target_dir: &Path) -> Result<(), PatchError> {
-    for entry in entries {
+pub fn validate_entries<F>(
+    entries: &[ManifestEntry],
+    target_dir: &Path,
+    mut on_progress: Option<F>,
+) -> Result<(), PatchError>
+where
+    F: FnMut(Progress),
+{
+    let total = entries.len();
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(ref mut callback) = on_progress {
+            callback(Progress {
+                file: entry.file(),
+                index,
+                total,
+            });
+        }
         match entry {
             ManifestEntry::Patch {
                 file,
@@ -139,8 +155,23 @@ pub fn validate_entries(entries: &[ManifestEntry], target_dir: &Path) -> Result<
 /// - For Patch entries: backup file MUST exist with hash matching original_hash
 /// - For Delete entries: if backup exists, hash MUST match original_hash (missing OK)
 /// - For Add entries: no backup expected
-pub fn validate_backup(entries: &[ManifestEntry], backup_dir: &Path) -> Result<(), PatchError> {
-    for entry in entries {
+pub fn validate_backup<F>(
+    entries: &[ManifestEntry],
+    backup_dir: &Path,
+    mut on_progress: Option<F>,
+) -> Result<(), PatchError>
+where
+    F: FnMut(Progress),
+{
+    let total = entries.len();
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(ref mut callback) = on_progress {
+            callback(Progress {
+                file: entry.file(),
+                index,
+                total,
+            });
+        }
         match entry {
             ManifestEntry::Patch {
                 file,
