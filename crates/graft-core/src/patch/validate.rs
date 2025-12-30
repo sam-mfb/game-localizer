@@ -1,5 +1,6 @@
 use crate::patch::constants::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
 use crate::patch::error::PatchError;
+use crate::patch::verify::verify_entry;
 use crate::patch::{Progress, ProgressAction};
 use crate::utils::hash::hash_bytes;
 use crate::utils::manifest::{Manifest, ManifestEntry};
@@ -232,6 +233,39 @@ where
                 // No backup for added files
             }
         }
+    }
+    Ok(())
+}
+
+/// Validate that all entries are in their expected post-patch state.
+///
+/// This verifies:
+/// - Patch entries: file exists and matches final_hash
+/// - Add entries: file exists and matches final_hash
+/// - Delete entries: file does not exist
+///
+/// Use this before rollback to ensure patched files haven't been modified,
+/// or after apply to confirm patches were applied correctly.
+pub fn validate_patched_entries<F>(
+    entries: &[ManifestEntry],
+    target_dir: &Path,
+    mut on_progress: Option<F>,
+) -> Result<(), PatchError>
+where
+    F: FnMut(Progress),
+{
+    let total = entries.len();
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(ref mut callback) = on_progress {
+            callback(Progress {
+                file: entry.file(),
+                index,
+                total,
+                action: ProgressAction::Validating,
+            });
+        }
+
+        verify_entry(entry, target_dir)?;
     }
     Ok(())
 }

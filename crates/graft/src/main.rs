@@ -103,6 +103,9 @@ enum PatchCommands {
         target: PathBuf,
         /// Path to manifest.json (from original patch)
         manifest: PathBuf,
+        /// Skip validation of patched files (use when files have been modified)
+        #[arg(long, short)]
+        force: bool,
     },
 }
 
@@ -211,8 +214,8 @@ fn main() {
                     }
                 }
             }
-            PatchCommands::Rollback { target, manifest } => {
-                match graft::commands::patch_rollback::run(&target, &manifest) {
+            PatchCommands::Rollback { target, manifest, force } => {
+                match graft::commands::patch_rollback::run(&target, &manifest, force) {
                     Ok(()) => {
                         println!("Rollback complete");
                     }
