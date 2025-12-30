@@ -15,18 +15,23 @@ pub enum AppState {
     /// Patch is being applied
     Applying {
         path: PathBuf,
-        current_file: String,
         progress: f32,
         total: usize,
         completed: usize,
+        log: Vec<String>,
     },
     /// Patch applied successfully
-    Success { path: PathBuf, files_patched: usize },
+    Success {
+        path: PathBuf,
+        files_patched: usize,
+        log: Vec<String>,
+    },
     /// An error occurred
     Error {
         message: String,
         details: Option<String>,
         show_details: bool,
+        log: Vec<String>,
     },
 }
 
@@ -92,10 +97,10 @@ impl GraftApp {
                 // Demo mode: simulate applying
                 self.state = AppState::Applying {
                     path: target_path,
-                    current_file: "demo_file.bin".to_string(),
                     progress: 0.0,
                     total: self.patch_info.entry_count,
                     completed: 0,
+                    log: vec!["[Demo] Starting patch application...".to_string()],
                 };
                 return;
             }
@@ -111,10 +116,10 @@ impl GraftApp {
 
         self.state = AppState::Applying {
             path: target_path.clone(),
-            current_file: String::new(),
             progress: 0.0,
             total,
             completed: 0,
+            log: Vec::new(),
         };
 
         let (patch_data, tx) = patch_data;
@@ -154,43 +159,53 @@ impl GraftApp {
 
         for event in messages {
             match event {
-                ProgressEvent::Processing { file, index, total } => {
-                    if let AppState::Applying { path, .. } = &self.state {
-                        self.state = AppState::Applying {
-                            path: path.clone(),
-                            current_file: file,
-                            progress: index as f32 / total as f32,
-                            total,
-                            completed: index,
-                        };
+                ProgressEvent::Processing { file, index, total: t } => {
+                    if let AppState::Applying {
+                        log,
+                        progress,
+                        total,
+                        ..
+                    } = &mut self.state
+                    {
+                        log.push(format!("[{}/{}] {}", index + 1, t, file));
+                        *progress = index as f32 / t as f32;
+                        *total = t;
                     }
                 }
-                ProgressEvent::Processed { index, total } => {
-                    if let AppState::Applying { path, current_file, .. } = &self.state {
-                        let completed = index + 1;
-                        self.state = AppState::Applying {
-                            path: path.clone(),
-                            current_file: current_file.clone(),
-                            progress: completed as f32 / total as f32,
-                            total,
-                            completed,
-                        };
+                ProgressEvent::Processed { index, total: t } => {
+                    if let AppState::Applying {
+                        progress,
+                        total,
+                        completed,
+                        ..
+                    } = &mut self.state
+                    {
+                        *completed = index + 1;
+                        *progress = *completed as f32 / t as f32;
+                        *total = t;
                     }
                 }
                 ProgressEvent::Done { files_patched } => {
-                    if let AppState::Applying { path, .. } = &self.state {
+                    if let AppState::Applying { path, log, .. } = &self.state {
                         self.state = AppState::Success {
                             path: path.clone(),
                             files_patched,
+                            log: log.clone(),
                         };
                     }
                     should_clear_rx = true;
                 }
                 ProgressEvent::Error { message, details } => {
+                    let log = if let AppState::Applying { log, .. } = &self.state {
+                        log.clone()
+                    } else {
+                        Vec::new()
+                    };
                     self.state = AppState::Error {
                         message,
                         details,
                         show_details: false,
+                        log,
                     };
                     should_clear_rx = true;
                 }
@@ -200,6 +215,27 @@ impl GraftApp {
         if should_clear_rx {
             *progress_rx = None;
         }
+    }
+
+    /// Render a scrollable log area with fixed height
+    fn render_log(ui: &mut egui::Ui, log: &[String]) {
+        let height = 120.0;
+        egui::Frame::none()
+            .fill(egui::Color32::from_gray(245))
+            .rounding(4.0)
+            .inner_margin(4.0)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(height)
+                    .min_scrolled_height(height)
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.set_min_height(height);
+                        for line in log {
+                            ui.label(egui::RichText::new(line).monospace().small());
+                        }
+                    });
+            });
     }
 
     fn render_welcome(&mut self, ui: &mut egui::Ui) {
@@ -285,7 +321,7 @@ impl GraftApp {
     fn render_applying(
         &mut self,
         ui: &mut egui::Ui,
-        current_file: String,
+        log: Vec<String>,
         progress: f32,
         total: usize,
         completed: usize,
@@ -296,8 +332,10 @@ impl GraftApp {
         ui.add(egui::ProgressBar::new(progress).show_percentage());
         ui.add_space(8.0);
 
-        ui.label(format!("Processing: {}", current_file));
         ui.label(format!("{} / {} operations completed", completed, total));
+
+        ui.add_space(8.0);
+        Self::render_log(ui, &log);
 
         // Demo mode: simulate progress
         if matches!(self.mode, Mode::Demo) {
@@ -308,28 +346,37 @@ impl GraftApp {
                         path,
                         total,
                         completed,
+                        log,
                         ..
                     } = &self.state
                     {
                         let new_completed = (completed + 1).min(*total);
                         let new_progress = new_completed as f32 / *total as f32;
+                        let mut new_log = log.clone();
+                        new_log.push(format!("[{}/{}] file_{}.bin", new_completed, *total, new_completed));
                         if new_completed >= *total {
                             self.state = AppState::Success {
                                 path: path.clone(),
                                 files_patched: *total,
+                                log: new_log,
                             };
                         } else {
                             self.state = AppState::Applying {
                                 path: path.clone(),
-                                current_file: format!("file_{}.bin", new_completed),
                                 progress: new_progress,
                                 total: *total,
                                 completed: new_completed,
+                                log: new_log,
                             };
                         }
                     }
                 }
                 if ui.button("Simulate Error").clicked() {
+                    let log = if let AppState::Applying { log, .. } = &self.state {
+                        log.clone()
+                    } else {
+                        Vec::new()
+                    };
                     self.state = AppState::Error {
                         message: "Failed to apply patch".to_string(),
                         details: Some(
@@ -337,6 +384,7 @@ impl GraftApp {
                                 .to_string(),
                         ),
                         show_details: false,
+                        log,
                     };
                 }
             });
@@ -349,34 +397,39 @@ impl GraftApp {
         ui: &mut egui::Ui,
         path: &PathBuf,
         files_patched: usize,
+        log: &[String],
     ) {
         ui.vertical_centered(|ui| {
-            ui.add_space(24.0);
+            ui.add_space(8.0);
 
             // Green circle with white checkmark
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 80.0), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
             ui.painter()
-                .circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(34, 197, 94));
+                .circle_filled(rect.center(), 30.0, egui::Color32::from_rgb(34, 197, 94));
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "\u{2713}",
-                egui::FontId::proportional(48.0),
+                egui::FontId::proportional(36.0),
                 egui::Color32::WHITE,
             );
 
-            ui.add_space(16.0);
-            ui.heading("Patch Applied Successfully!");
-            ui.add_space(16.0);
-            ui.label(format!("{} operations completed", files_patched));
             ui.add_space(8.0);
+            ui.heading("Patch Applied Successfully!");
+            ui.add_space(4.0);
+            ui.label(format!("{} operations completed", files_patched));
             ui.label(
                 egui::RichText::new(path.display().to_string())
                     .monospace()
                     .small(),
             );
-            ui.add_space(24.0);
+        });
 
+        ui.add_space(8.0);
+        Self::render_log(ui, log);
+        ui.add_space(8.0);
+
+        ui.vertical_centered(|ui| {
             if ui.button("Quit").clicked() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -390,31 +443,32 @@ impl GraftApp {
         message: String,
         details: Option<String>,
         show_details: bool,
+        log: Vec<String>,
     ) {
         ui.vertical_centered(|ui| {
-            ui.add_space(24.0);
+            ui.add_space(8.0);
 
             // Red circle with white X
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 80.0), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
             ui.painter()
-                .circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(239, 68, 68));
+                .circle_filled(rect.center(), 30.0, egui::Color32::from_rgb(239, 68, 68));
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "\u{2717}",
-                egui::FontId::proportional(48.0),
+                egui::FontId::proportional(36.0),
                 egui::Color32::WHITE,
             );
 
-            ui.add_space(16.0);
+            ui.add_space(8.0);
             ui.heading("Error");
         });
 
-        ui.add_space(16.0);
+        ui.add_space(4.0);
         ui.label(&message);
 
         if let Some(ref detail_text) = details {
-            ui.add_space(8.0);
+            ui.add_space(4.0);
             let button_text = if show_details {
                 "Hide Details"
             } else {
@@ -425,20 +479,24 @@ impl GraftApp {
                     message: message.clone(),
                     details: details.clone(),
                     show_details: !show_details,
+                    log: log.clone(),
                 };
             }
 
             if show_details {
-                ui.add_space(8.0);
+                ui.add_space(4.0);
                 egui::ScrollArea::vertical()
-                    .max_height(100.0)
+                    .max_height(60.0)
                     .show(ui, |ui| {
                         ui.label(egui::RichText::new(detail_text).monospace().small());
                     });
             }
         }
 
-        ui.add_space(16.0);
+        ui.add_space(8.0);
+        Self::render_log(ui, &log);
+        ui.add_space(8.0);
+
         ui.horizontal(|ui| {
             if ui.button("Try Again").clicked() {
                 self.state = AppState::Welcome;
@@ -469,20 +527,21 @@ impl eframe::App for GraftApp {
                 AppState::Welcome => self.render_welcome(ui),
                 AppState::FolderSelected { path } => self.render_folder_selected(ui, path),
                 AppState::Applying {
-                    current_file,
+                    log,
                     progress,
                     total,
                     completed,
                     ..
-                } => self.render_applying(ui, current_file, progress, total, completed),
-                AppState::Success { path, files_patched } => {
-                    self.render_success(ctx, ui, &path, files_patched)
+                } => self.render_applying(ui, log, progress, total, completed),
+                AppState::Success { path, files_patched, log } => {
+                    self.render_success(ctx, ui, &path, files_patched, &log)
                 }
                 AppState::Error {
                     message,
                     details,
                     show_details,
-                } => self.render_error(ctx, ui, message, details, show_details),
+                    log,
+                } => self.render_error(ctx, ui, message, details, show_details, log),
             }
         });
     }
