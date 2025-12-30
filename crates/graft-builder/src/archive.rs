@@ -1,18 +1,24 @@
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use graft_core::patch;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tar::Builder;
 use tempfile::NamedTempFile;
 
-/// A temporary archive file that cleans itself up when dropped.
+/// Storage for an archive file - either temp or at a fixed path
+enum ArchiveStorage {
+    Temp(NamedTempFile),
+    Fixed(PathBuf),
+}
+
+/// An archive file that cleans itself up when dropped.
 ///
 /// This type implements RAII - the archive file is automatically
-/// deleted when the `ArchiveFile` goes out of scope (via NamedTempFile).
+/// deleted when the `ArchiveFile` goes out of scope.
 pub struct ArchiveFile {
-    temp_file: NamedTempFile,
+    storage: ArchiveStorage,
 }
 
 impl ArchiveFile {
@@ -32,12 +38,40 @@ impl ArchiveFile {
         let data = create_archive_bytes(patch_dir)?;
         temp_file.as_file().write_all(&data)?;
 
-        Ok(Self { temp_file })
+        Ok(Self {
+            storage: ArchiveStorage::Temp(temp_file),
+        })
     }
 
-    /// Get the path to the temporary archive file.
+    /// Create a tar.gz archive from a patch directory at a specific path.
+    ///
+    /// The file will be deleted when this `ArchiveFile` is dropped.
+    pub fn create_at(patch_dir: &Path, target_path: &Path) -> io::Result<Self> {
+        let data = create_archive_bytes(patch_dir)?;
+        let mut file = File::create(target_path)?;
+        file.write_all(&data)?;
+
+        Ok(Self {
+            storage: ArchiveStorage::Fixed(target_path.to_path_buf()),
+        })
+    }
+
+    /// Get the path to the archive file.
     pub fn path(&self) -> &Path {
-        self.temp_file.path()
+        match &self.storage {
+            ArchiveStorage::Temp(temp_file) => temp_file.path(),
+            ArchiveStorage::Fixed(path) => path,
+        }
+    }
+}
+
+impl Drop for ArchiveFile {
+    fn drop(&mut self) {
+        // Temp files are cleaned up automatically by NamedTempFile
+        // Fixed files need manual cleanup
+        if let ArchiveStorage::Fixed(path) = &self.storage {
+            let _ = fs::remove_file(path);
+        }
     }
 }
 

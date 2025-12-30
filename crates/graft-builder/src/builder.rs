@@ -68,10 +68,17 @@ fn build_impl(
     // Step 2: Find workspace root
     let workspace_root = find_workspace_root()?;
 
-    // Step 3: Create the archive in temp location (cleaned up when archive is dropped)
+    // Step 3: Create the archive
+    // For cross-compilation, place in workspace so it gets copied with source.
+    // Use relative path from graft-gui/src/main.rs to workspace root.
     println!("Creating patch archive...");
-    let archive = archive::ArchiveFile::create(patch_dir)
+    let archive_path = workspace_root.join(".graft-patch-archive.tar.gz");
+    // Keep archive in scope so file exists during build (cleaned up on drop)
+    let _archive = archive::ArchiveFile::create_at(patch_dir, &archive_path)
         .map_err(BuildError::ArchiveCreationFailed)?;
+
+    // Relative path from crates/graft-gui/src/main.rs to workspace root
+    const ARCHIVE_RELATIVE_PATH: &str = "../../../.graft-patch-archive.tar.gz";
 
     // Step 4: Create output directory
     fs::create_dir_all(output_dir).map_err(|e| BuildError::OutputDirCreationFailed {
@@ -86,7 +93,7 @@ fn build_impl(
         None => {
             // Native build (existing behavior)
             println!("Building graft-gui with embedded patch...");
-            run_cargo_build(&workspace_root, archive.path())?;
+            run_cargo_build(&workspace_root, ARCHIVE_RELATIVE_PATH)?;
 
             let binary_name = get_binary_name(patcher_name);
             let source_binary = get_release_binary_path(&workspace_root, None);
@@ -99,7 +106,7 @@ fn build_impl(
             // Cross-compilation
             for target in target_list {
                 println!("Building for {}...", target.name);
-                run_cross_build(&workspace_root, archive.path(), target)?;
+                run_cross_build(&workspace_root, ARCHIVE_RELATIVE_PATH, target)?;
 
                 let output_name = targets::get_output_name(patcher_name, target);
                 let source_binary = get_release_binary_path(&workspace_root, Some(target));
@@ -173,7 +180,7 @@ fn find_workspace_root() -> Result<PathBuf, BuildError> {
 }
 
 /// Run cargo build for graft-gui with embedded_patch feature (native build)
-fn run_cargo_build(workspace_root: &Path, archive_path: &Path) -> Result<(), BuildError> {
+fn run_cargo_build(workspace_root: &Path, archive_relative_path: &str) -> Result<(), BuildError> {
     let output = Command::new("cargo")
         .args([
             "build",
@@ -183,7 +190,7 @@ fn run_cargo_build(workspace_root: &Path, archive_path: &Path) -> Result<(), Bui
             "--features",
             "embedded_patch",
         ])
-        .env("GRAFT_PATCH_ARCHIVE", archive_path)
+        .env("GRAFT_PATCH_ARCHIVE", archive_relative_path)
         .current_dir(workspace_root)
         .output()
         .map_err(|e| BuildError::CargoBuildFailed {
@@ -204,7 +211,7 @@ fn run_cargo_build(workspace_root: &Path, archive_path: &Path) -> Result<(), Bui
 /// Run cross build for graft-gui with embedded_patch feature (cross-compilation)
 fn run_cross_build(
     workspace_root: &Path,
-    archive_path: &Path,
+    archive_relative_path: &str,
     target: &Target,
 ) -> Result<(), BuildError> {
     let output = Command::new("cross")
@@ -218,7 +225,8 @@ fn run_cross_build(
             "--target",
             target.triple,
         ])
-        .env("GRAFT_PATCH_ARCHIVE", archive_path)
+        .env("GRAFT_PATCH_ARCHIVE", archive_relative_path)
+        .env("CROSS_REMOTE", "1")
         .current_dir(workspace_root)
         .output()
         .map_err(|e| BuildError::CargoBuildFailed {

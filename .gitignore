@@ -27,3 +27,9 @@ target
 
 # for tmp files
 tmp
+
+# Temporary patch archive created during graft-builder builds
+.graft-patch-archive.tar.gz
+
+# Built patchers output directory
+dist/
