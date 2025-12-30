@@ -55,12 +55,26 @@ impl PatchRunner {
     ///
     /// The callback is invoked for each progress event. Returns Ok(()) on success,
     /// or the first error encountered.
+    ///
+    /// This uses the full patch workflow including:
+    /// - Validation before making any changes
+    /// - Backup of files that will be modified/deleted (to .patch-backup)
+    /// - Atomic rollback on failure
     pub fn apply<F>(&self, target: &Path, mut on_progress: F) -> Result<(), PatchError>
     where
         F: FnMut(ProgressEvent),
     {
         let total = self.manifest.entries.len();
 
+        // Validate all entries before making any changes
+        patch::validate_entries(&self.manifest.entries, target)?;
+
+        // Backup all files that will be modified/deleted
+        let backup_dir = target.join(patch::BACKUP_DIR);
+        patch::backup_entries(&self.manifest.entries, target, &backup_dir)?;
+
+        // Apply each entry, verifying immediately after
+        let mut applied = Vec::new();
         for (i, entry) in self.manifest.entries.iter().enumerate() {
             let file = entry.file().to_string();
 
@@ -70,13 +84,25 @@ impl PatchRunner {
                 total,
             });
 
-            if let Err(e) = patch::apply::apply_entry(entry, target, &self.patch_dir) {
+            if let Err(e) = patch::apply_entry(entry, target, &self.patch_dir) {
+                patch::rollback(&applied, target, &backup_dir)?;
                 on_progress(ProgressEvent::Error {
                     message: format!("Failed to apply patch to '{}'", file),
                     details: Some(e.to_string()),
                 });
                 return Err(e);
             }
+
+            if let Err(e) = patch::verify_entry(entry, target) {
+                patch::rollback(&applied, target, &backup_dir)?;
+                on_progress(ProgressEvent::Error {
+                    message: format!("Verification failed for '{}'", file),
+                    details: Some(e.to_string()),
+                });
+                return Err(e);
+            }
+
+            applied.push(entry);
 
             on_progress(ProgressEvent::Processed { index: i, total });
         }

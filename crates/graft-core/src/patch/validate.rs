@@ -1,6 +1,8 @@
 use crate::patch::constants::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
 use crate::patch::error::PatchError;
+use crate::utils::hash::hash_bytes;
 use crate::utils::manifest::{Manifest, ManifestEntry};
+use std::fs;
 use std::path::Path;
 
 /// Validate that a patch directory contains all required files.
@@ -47,6 +49,86 @@ pub fn validate_patch_dir(patch_dir: &Path) -> Result<Manifest, PatchError> {
     }
 
     Ok(manifest)
+}
+
+/// Validate all manifest entries against a target directory before applying.
+///
+/// Checks that:
+/// - For Patch entries: file exists and hash matches original_hash
+/// - For Add entries: file does NOT already exist
+/// - For Delete entries: if file exists, hash matches original_hash
+///
+/// This should be called before applying any changes to ensure the target
+/// directory is in the expected state.
+pub fn validate_entries(entries: &[ManifestEntry], target_dir: &Path) -> Result<(), PatchError> {
+    for entry in entries {
+        match entry {
+            ManifestEntry::Patch {
+                file,
+                original_hash,
+                ..
+            } => {
+                let target_path = target_dir.join(file);
+
+                if !target_path.exists() {
+                    return Err(PatchError::ValidationFailed {
+                        file: file.clone(),
+                        reason: "file not found in target".to_string(),
+                    });
+                }
+
+                let data = fs::read(&target_path).map_err(|e| PatchError::ValidationFailed {
+                    file: file.clone(),
+                    reason: format!("failed to read file: {}", e),
+                })?;
+
+                let actual_hash = hash_bytes(&data);
+                if &actual_hash != original_hash {
+                    return Err(PatchError::ValidationFailed {
+                        file: file.clone(),
+                        reason: format!(
+                            "hash mismatch: expected {}, got {}",
+                            original_hash, actual_hash
+                        ),
+                    });
+                }
+            }
+            ManifestEntry::Add { file, .. } => {
+                let target_path = target_dir.join(file);
+
+                if target_path.exists() {
+                    return Err(PatchError::ValidationFailed {
+                        file: file.clone(),
+                        reason: "file already exists in target".to_string(),
+                    });
+                }
+            }
+            ManifestEntry::Delete { file, original_hash } => {
+                let target_path = target_dir.join(file);
+
+                // Only validate hash if file exists - already gone is fine
+                if target_path.exists() {
+                    let data = fs::read(&target_path).map_err(|e| PatchError::ValidationFailed {
+                        file: file.clone(),
+                        reason: format!("failed to read file: {}", e),
+                    })?;
+
+                    let actual_hash = hash_bytes(&data);
+                    if &actual_hash != original_hash {
+                        return Err(PatchError::ValidationFailed {
+                            file: file.clone(),
+                            reason: format!(
+                                "hash mismatch: expected {}, got {}",
+                                original_hash, actual_hash
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
