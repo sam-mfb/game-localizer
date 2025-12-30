@@ -20,6 +20,10 @@ pub enum BuildError {
     CopyFailed { from: PathBuf, to: PathBuf, source: io::Error },
     /// Could not determine workspace root
     WorkspaceNotFound,
+    /// Invalid target specified
+    InvalidTarget(String),
+    /// Cross tool not found
+    CrossNotFound,
 }
 
 impl fmt::Display for BuildError {
@@ -59,6 +63,20 @@ impl fmt::Display for BuildError {
             }
             BuildError::WorkspaceNotFound => {
                 write!(f, "could not determine cargo workspace root")
+            }
+            BuildError::InvalidTarget(name) => {
+                write!(
+                    f,
+                    "invalid target '{}'. Available targets: linux-x64, linux-arm64, windows",
+                    name
+                )
+            }
+            BuildError::CrossNotFound => {
+                write!(
+                    f,
+                    "'cross' not found. Install with: cargo install cross\n\
+                     Cross-compilation also requires Docker to be installed and running."
+                )
             }
         }
     }

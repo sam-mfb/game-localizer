@@ -116,12 +116,14 @@ graft-builder build <PATCH_DIR> [OPTIONS]
 OPTIONS:
     -o, --output <DIR>       Output directory [default: ./dist]
     -n, --name <NAME>        Patcher name [default: patcher]
+    --targets <TARGETS>      Cross-compile for specific targets (comma-separated)
+                             Available: linux-x64, linux-arm64, windows
+                             Requires: Docker and `cargo install cross`
 ```
 
-**Planned options (Phase 4+):**
+**Planned options (Phase 5+):**
 ```
-    --targets <TARGETS>      linux-x64,linux-arm64,windows,macos-x64,macos-arm64
-                             [default: linux-x64,linux-arm64,windows]
+    --targets <TARGETS>      Add: macos-x64, macos-arm64 (requires native Mac build)
     --locales <LOCALES>      Locales to include [default: en]
                              Example: --locales en,ja,es
 ```
@@ -150,14 +152,15 @@ OPTIONS:
 - Local `cargo build --release` integration
 - Shared validation logic in `graft-core::patch::validate`
 
-### Phase 4: Cross-Compilation (Linux + Windows)
+### Phase 4: Cross-Compilation (Linux + Windows) ✓
 - Add Cross.toml configuration
 - Build orchestration for x86_64 Linux, ARM64 Linux, Windows
 - Copy artifacts to output directory
+- `--targets` CLI flag (comma-separated: linux-x64,linux-arm64,windows)
 
 ### Phase 5: macOS Support
 - Document native build on Mac (`cargo build --release`)
-- Add `--targets` flag to select platforms
+- Add macos-x64 and macos-arm64 to `--targets` options
 - Optional: GitHub Actions workflow for all platforms
 
 ### Phase 6: Localization

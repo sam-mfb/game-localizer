@@ -25,6 +25,12 @@ enum Commands {
         /// Name for the patcher executable (without extension)
         #[arg(short, long)]
         name: Option<String>,
+
+        /// Cross-compile for specific targets (comma-separated)
+        /// Available: linux-x64, linux-arm64, windows
+        /// Requires: Docker and `cargo install cross`
+        #[arg(long, value_delimiter = ',')]
+        targets: Option<Vec<String>>,
     },
 }
 
@@ -36,14 +42,38 @@ fn main() {
             patch_dir,
             output,
             name,
-        } => match graft_builder::build(&patch_dir, &output, name.as_deref()) {
-            Ok(output_path) => {
-                println!("Built patcher: {}", output_path.display());
+            targets,
+        } => {
+            let result = match targets {
+                Some(ref target_names) => {
+                    // Cross-compilation mode
+                    match graft_builder::targets::parse_targets(target_names) {
+                        Ok(parsed_targets) => graft_builder::build_cross(
+                            &patch_dir,
+                            &output,
+                            name.as_deref(),
+                            &parsed_targets,
+                        ),
+                        Err(e) => Err(e),
+                    }
+                }
+                None => {
+                    // Native build mode
+                    graft_builder::build(&patch_dir, &output, name.as_deref()).map(|p| vec![p])
+                }
+            };
+
+            match result {
+                Ok(output_paths) => {
+                    for path in &output_paths {
+                        println!("Built patcher: {}", path.display());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(1);
+                }
             }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                process::exit(1);
-            }
-        },
+        }
     }
 }

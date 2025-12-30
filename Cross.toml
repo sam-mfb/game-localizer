@@ -1,0 +1,12 @@
+# Cross-compilation configuration for graft-builder
+# See: https://github.com/cross-rs/cross
+
+[build.env]
+# Pass the patch archive path into the Docker container
+passthrough = ["GRAFT_PATCH_ARCHIVE"]
+
+[target.x86_64-unknown-linux-gnu]
+
+[target.aarch64-unknown-linux-gnu]
+
+[target.x86_64-pc-windows-gnu]
