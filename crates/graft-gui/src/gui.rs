@@ -1,4 +1,4 @@
-use crate::runner::{PatchRunner, Phase, ProgressAction, ProgressEvent};
+use crate::runner::{PatchRunner, Phase, ProgressAction, ProgressEvent, RollbackEvent};
 use crate::validator::{PatchInfo, PatchValidationError, PatchValidator};
 use eframe::egui;
 use std::path::PathBuf;
@@ -24,6 +24,12 @@ fn format_action(action: ProgressAction) -> &'static str {
 pub enum AppState {
     /// Initial state showing patch info and folder selection button
     Welcome,
+    /// Validating selected folder before showing ready state
+    ValidatingFolder { path: PathBuf },
+    /// Folder validation failed - cannot patch this folder
+    FolderInvalid { path: PathBuf, reason: String },
+    /// Folder already has backup - appears to be patched already
+    AlreadyPatched { path: PathBuf, modified: bool },
     /// User has selected a folder, ready to apply
     FolderSelected { path: PathBuf },
     /// Patch is being applied
@@ -41,6 +47,16 @@ pub enum AppState {
         files_patched: usize,
         log: Vec<String>,
     },
+    /// Rollback in progress
+    RollingBack {
+        path: PathBuf,
+        log: Vec<String>,
+        force: bool,
+    },
+    /// Rollback needs confirmation - target files have changed
+    RollbackWarning { path: PathBuf, reason: String },
+    /// Rollback completed successfully
+    RollbackComplete { path: PathBuf, log: Vec<String> },
     /// An error occurred
     Error {
         message: String,
@@ -48,6 +64,17 @@ pub enum AppState {
         show_details: bool,
         log: Vec<String>,
     },
+}
+
+/// Result of folder validation
+#[derive(Debug, Clone)]
+pub enum ValidationResult {
+    /// Folder is valid for patching
+    Valid,
+    /// Folder cannot be patched
+    Invalid { reason: String },
+    /// Folder appears to already be patched
+    AlreadyPatched { modified: bool },
 }
 
 /// Application mode
@@ -59,6 +86,10 @@ pub enum Mode {
         patch_data: Vec<u8>,
         /// Channel for receiving progress updates from worker thread (Some when applying)
         progress_rx: Option<mpsc::Receiver<ProgressEvent>>,
+        /// Channel for receiving validation results
+        validation_rx: Option<mpsc::Receiver<ValidationResult>>,
+        /// Channel for receiving rollback events
+        rollback_rx: Option<mpsc::Receiver<RollbackEvent>>,
     },
 }
 
@@ -95,6 +126,8 @@ impl GraftApp {
             mode: Mode::Embedded {
                 patch_data,
                 progress_rx: None,
+                validation_rx: None,
+                rollback_rx: None,
             },
             path_input: String::new(),
         })
@@ -102,8 +135,61 @@ impl GraftApp {
 
     fn select_folder(&mut self) {
         if let Some(path) = rfd::FileDialog::new().pick_folder() {
-            self.state = AppState::FolderSelected { path };
+            self.start_validation(path);
         }
+    }
+
+    fn start_validation(&mut self, path: PathBuf) {
+        let patch_data = match &mut self.mode {
+            Mode::Demo => {
+                // Demo mode: skip validation, go directly to FolderSelected
+                self.state = AppState::FolderSelected { path };
+                return;
+            }
+            Mode::Embedded { patch_data, validation_rx, .. } => {
+                let data = patch_data.clone();
+                let (tx, rx) = mpsc::channel();
+                *validation_rx = Some(rx);
+                (data, tx)
+            }
+        };
+
+        self.state = AppState::ValidatingFolder { path: path.clone() };
+
+        let (patch_data, tx) = patch_data;
+
+        // Worker thread validates the folder
+        thread::spawn(move || {
+            let runner = match PatchRunner::new(&patch_data) {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = tx.send(ValidationResult::Invalid {
+                        reason: e.to_string(),
+                    });
+                    return;
+                }
+            };
+
+            // Check if backup exists (already patched scenario)
+            if PatchRunner::has_backup(&path) {
+                // Check if files are in patched state
+                let modified = !runner.is_patched(&path);
+                let _ = tx.send(ValidationResult::AlreadyPatched { modified });
+                return;
+            }
+
+            // Validate folder can be patched
+            match runner.validate_target(&path) {
+                Ok(()) => {
+                    let _ = tx.send(ValidationResult::Valid);
+                }
+                Err(e) => {
+                    let _ = tx.send(ValidationResult::Invalid {
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        });
     }
 
     fn start_apply(&mut self, target_path: PathBuf) {
@@ -120,7 +206,7 @@ impl GraftApp {
                 };
                 return;
             }
-            Mode::Embedded { patch_data, progress_rx } => {
+            Mode::Embedded { patch_data, progress_rx, .. } => {
                 let data = patch_data.clone();
                 let (tx, rx) = mpsc::channel();
                 *progress_rx = Some(rx);
@@ -251,6 +337,141 @@ impl GraftApp {
         }
     }
 
+    fn process_validation_messages(&mut self) {
+        let validation_rx = match &mut self.mode {
+            Mode::Demo => return,
+            Mode::Embedded { validation_rx, .. } => validation_rx,
+        };
+
+        // Get validation result if available
+        let result = validation_rx
+            .as_ref()
+            .and_then(|rx| rx.try_recv().ok());
+
+        if let Some(result) = result {
+            if let AppState::ValidatingFolder { path } = &self.state {
+                let path = path.clone();
+                match result {
+                    ValidationResult::Valid => {
+                        self.state = AppState::FolderSelected { path };
+                    }
+                    ValidationResult::Invalid { reason } => {
+                        self.state = AppState::FolderInvalid { path, reason };
+                    }
+                    ValidationResult::AlreadyPatched { modified } => {
+                        self.state = AppState::AlreadyPatched { path, modified };
+                    }
+                }
+            }
+            *validation_rx = None;
+        }
+    }
+
+    fn process_rollback_messages(&mut self) {
+        let rollback_rx = match &mut self.mode {
+            Mode::Demo => return,
+            Mode::Embedded { rollback_rx, .. } => rollback_rx,
+        };
+
+        // Collect messages
+        let messages: Vec<_> = rollback_rx
+            .as_ref()
+            .map(|rx| rx.try_iter().collect())
+            .unwrap_or_default();
+
+        let mut should_clear_rx = false;
+
+        for event in messages {
+            match event {
+                RollbackEvent::ValidatingTarget | RollbackEvent::ValidatingBackup => {
+                    // Could add log messages here if desired
+                }
+                RollbackEvent::TargetModified { reason } => {
+                    if let AppState::RollingBack { path, .. } = &self.state {
+                        self.state = AppState::RollbackWarning {
+                            path: path.clone(),
+                            reason,
+                        };
+                    }
+                    should_clear_rx = true;
+                }
+                RollbackEvent::Rolling { file, index, total, action } => {
+                    if let AppState::RollingBack { log, .. } = &mut self.state {
+                        log.push(format!("  [{}/{}] {}: {}", index + 1, total, format_action(action), file));
+                    }
+                }
+                RollbackEvent::Done { .. } => {
+                    if let AppState::RollingBack { path, log, .. } = &self.state {
+                        self.state = AppState::RollbackComplete {
+                            path: path.clone(),
+                            log: log.clone(),
+                        };
+                    }
+                    should_clear_rx = true;
+                }
+                RollbackEvent::Error { message } => {
+                    if let AppState::RollingBack { log, .. } = &self.state {
+                        self.state = AppState::Error {
+                            message: "Rollback failed".to_string(),
+                            details: Some(message),
+                            show_details: false,
+                            log: log.clone(),
+                        };
+                    }
+                    should_clear_rx = true;
+                }
+            }
+        }
+
+        if should_clear_rx {
+            *rollback_rx = None;
+        }
+    }
+
+    fn start_rollback(&mut self, path: PathBuf, force: bool) {
+        let patch_data = match &mut self.mode {
+            Mode::Demo => {
+                // Demo mode: simulate rollback complete
+                self.state = AppState::RollbackComplete {
+                    path,
+                    log: vec!["[Demo] Rollback complete".to_string()],
+                };
+                return;
+            }
+            Mode::Embedded { patch_data, rollback_rx, .. } => {
+                let data = patch_data.clone();
+                let (tx, rx) = mpsc::channel();
+                *rollback_rx = Some(rx);
+                (data, tx)
+            }
+        };
+
+        self.state = AppState::RollingBack {
+            path: path.clone(),
+            log: vec!["[Rolling back]".to_string()],
+            force,
+        };
+
+        let (patch_data, tx) = patch_data;
+
+        // Worker thread performs rollback
+        thread::spawn(move || {
+            let runner = match PatchRunner::new(&patch_data) {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = tx.send(RollbackEvent::Error {
+                        message: e.to_string(),
+                    });
+                    return;
+                }
+            };
+
+            let _ = runner.rollback(&path, force, |event| {
+                let _ = tx.send(event);
+            });
+        });
+    }
+
     /// Render a scrollable log area with fixed height
     fn render_log(ui: &mut egui::Ui, log: &[String]) {
         let height = 120.0;
@@ -311,7 +532,7 @@ impl GraftApp {
                 .add_enabled(valid, egui::Button::new("Use Path"))
                 .clicked()
             {
-                self.state = AppState::FolderSelected { path };
+                self.start_validation(path);
             }
         });
 
@@ -432,10 +653,10 @@ impl GraftApp {
     }
 
     fn render_success(
-        &self,
+        &mut self,
         ctx: &egui::Context,
         ui: &mut egui::Ui,
-        path: &PathBuf,
+        path: PathBuf,
         files_patched: usize,
         log: &[String],
     ) {
@@ -469,7 +690,10 @@ impl GraftApp {
         Self::render_log(ui, log);
         ui.add_space(8.0);
 
-        ui.vertical_centered(|ui| {
+        ui.horizontal(|ui| {
+            if ui.button("Rollback").clicked() {
+                self.start_rollback(path.clone(), false);
+            }
             if ui.button("Quit").clicked() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -546,15 +770,245 @@ impl GraftApp {
             }
         });
     }
+
+    fn render_validating_folder(&self, ui: &mut egui::Ui, path: &PathBuf) {
+        ui.heading("Validating Folder...");
+        ui.add_space(16.0);
+
+        ui.group(|ui| {
+            ui.label("Checking:");
+            ui.label(egui::RichText::new(path.display().to_string()).monospace());
+        });
+
+        ui.add_space(16.0);
+        ui.spinner();
+        ui.label("Verifying files can be patched...");
+    }
+
+    fn render_folder_invalid(&mut self, ui: &mut egui::Ui, path: PathBuf, reason: String) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(8.0);
+
+            // Orange warning circle
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), 30.0, egui::Color32::from_rgb(245, 158, 11));
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "!",
+                egui::FontId::proportional(36.0),
+                egui::Color32::WHITE,
+            );
+
+            ui.add_space(8.0);
+            ui.heading("Cannot Patch This Folder");
+        });
+
+        ui.add_space(8.0);
+        ui.group(|ui| {
+            ui.label("Target folder:");
+            ui.label(egui::RichText::new(path.display().to_string()).monospace().small());
+        });
+
+        ui.add_space(8.0);
+        ui.label("Reason:");
+        egui::ScrollArea::vertical()
+            .max_height(80.0)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new(&reason).monospace().small());
+            });
+
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            if ui.button("Choose Different Folder...").clicked() {
+                self.select_folder();
+            }
+        });
+    }
+
+    fn render_already_patched(&mut self, ui: &mut egui::Ui, path: PathBuf, modified: bool) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(8.0);
+
+            // Blue info circle
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), 30.0, egui::Color32::from_rgb(59, 130, 246));
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "i",
+                egui::FontId::proportional(36.0),
+                egui::Color32::WHITE,
+            );
+
+            ui.add_space(8.0);
+            if modified {
+                ui.heading("Folder Was Patched (Modified)");
+            } else {
+                ui.heading("Folder Already Patched");
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.group(|ui| {
+            ui.label("Target folder:");
+            ui.label(egui::RichText::new(path.display().to_string()).monospace().small());
+        });
+
+        ui.add_space(8.0);
+        if modified {
+            ui.label("This folder was patched but files have been modified since.");
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                if ui.button("Re-apply Patch").clicked() {
+                    self.start_apply(path.clone());
+                }
+                if ui.button("Rollback Anyway").clicked() {
+                    self.start_rollback(path.clone(), true);
+                }
+            });
+        } else {
+            ui.label("This folder appears to already be patched.");
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                if ui.button("Rollback").clicked() {
+                    self.start_rollback(path.clone(), false);
+                }
+            });
+        }
+    }
+
+    fn render_rolling_back(&self, ui: &mut egui::Ui, path: &PathBuf, log: &[String]) {
+        ui.heading("Rolling Back...");
+        ui.add_space(16.0);
+
+        ui.group(|ui| {
+            ui.label("Target folder:");
+            ui.label(egui::RichText::new(path.display().to_string()).monospace().small());
+        });
+
+        ui.add_space(8.0);
+        ui.spinner();
+        ui.add_space(8.0);
+        Self::render_log(ui, log);
+    }
+
+    fn render_rollback_warning(&mut self, ui: &mut egui::Ui, path: PathBuf, reason: String) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(8.0);
+
+            // Orange warning circle
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), 30.0, egui::Color32::from_rgb(245, 158, 11));
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "!",
+                egui::FontId::proportional(36.0),
+                egui::Color32::WHITE,
+            );
+
+            ui.add_space(8.0);
+            ui.heading("Files Modified Since Patching");
+        });
+
+        ui.add_space(8.0);
+        ui.label("Some files have been changed after the patch was applied.");
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .max_height(80.0)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new(&reason).monospace().small());
+            });
+
+        ui.add_space(16.0);
+        ui.horizontal(|ui| {
+            if ui.button("Rollback Anyway").clicked() {
+                self.start_rollback(path.clone(), true);
+            }
+            if ui.button("Cancel").clicked() {
+                self.state = AppState::Welcome;
+            }
+        });
+    }
+
+    fn render_rollback_complete(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        path: PathBuf,
+        log: &[String],
+    ) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(8.0);
+
+            // Green circle with checkmark
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), 30.0, egui::Color32::from_rgb(34, 197, 94));
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{2713}",
+                egui::FontId::proportional(36.0),
+                egui::Color32::WHITE,
+            );
+
+            ui.add_space(8.0);
+            ui.heading("Rollback Complete");
+        });
+
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(path.display().to_string())
+                .monospace()
+                .small(),
+        );
+
+        ui.add_space(8.0);
+        Self::render_log(ui, log);
+        ui.add_space(8.0);
+
+        ui.label("Would you like to delete the backup files?");
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            if ui.button("Delete Backup").clicked() {
+                if let Err(e) = PatchRunner::delete_backup(&path) {
+                    self.state = AppState::Error {
+                        message: "Failed to delete backup".to_string(),
+                        details: Some(e.to_string()),
+                        show_details: false,
+                        log: log.to_vec(),
+                    };
+                } else {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+            if ui.button("Keep Backup").clicked() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        });
+    }
 }
 
 impl eframe::App for GraftApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Process any pending progress messages
+        // Process any pending messages
         self.process_progress_messages();
+        self.process_validation_messages();
+        self.process_rollback_messages();
 
-        // Request repaint if we're applying (to get progress updates)
-        if matches!(self.state, AppState::Applying { .. }) {
+        // Request repaint for async states (to get progress updates)
+        if matches!(
+            self.state,
+            AppState::Applying { .. }
+                | AppState::ValidatingFolder { .. }
+                | AppState::RollingBack { .. }
+        ) {
             ctx.request_repaint();
         }
 
@@ -565,6 +1019,13 @@ impl eframe::App for GraftApp {
             let state = self.state.clone();
             match state {
                 AppState::Welcome => self.render_welcome(ui),
+                AppState::ValidatingFolder { path } => self.render_validating_folder(ui, &path),
+                AppState::FolderInvalid { path, reason } => {
+                    self.render_folder_invalid(ui, path, reason)
+                }
+                AppState::AlreadyPatched { path, modified } => {
+                    self.render_already_patched(ui, path, modified)
+                }
                 AppState::FolderSelected { path } => self.render_folder_selected(ui, path),
                 AppState::Applying {
                     log,
@@ -572,8 +1033,19 @@ impl eframe::App for GraftApp {
                     current_phase,
                     ..
                 } => self.render_applying(ui, log, progress, current_phase),
-                AppState::Success { path, files_patched, log } => {
-                    self.render_success(ctx, ui, &path, files_patched, &log)
+                AppState::Success {
+                    path,
+                    files_patched,
+                    log,
+                } => self.render_success(ctx, ui, path, files_patched, &log),
+                AppState::RollingBack { path, log, .. } => {
+                    self.render_rolling_back(ui, &path, &log)
+                }
+                AppState::RollbackWarning { path, reason } => {
+                    self.render_rollback_warning(ui, path, reason)
+                }
+                AppState::RollbackComplete { path, log } => {
+                    self.render_rollback_complete(ctx, ui, path, &log)
                 }
                 AppState::Error {
                     message,

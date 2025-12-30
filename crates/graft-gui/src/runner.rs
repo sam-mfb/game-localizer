@@ -1,8 +1,9 @@
 use flate2::read::GzDecoder;
-use graft_core::patch::{self, PatchError, Progress};
+use graft_core::patch::{self, PatchError, Progress, BACKUP_DIR};
 use graft_core::utils::manifest::Manifest;
 use std::cell::RefCell;
 use std::fmt;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tar::Archive;
 
@@ -44,6 +45,28 @@ pub enum ProgressEvent {
 
 // Re-export ProgressAction for consumers
 pub use graft_core::patch::ProgressAction;
+
+/// Progress event emitted during rollback
+#[derive(Debug, Clone)]
+pub enum RollbackEvent {
+    /// Validating target files (patched state)
+    ValidatingTarget,
+    /// Target validation failed - files have been modified
+    TargetModified { reason: String },
+    /// Validating backup files
+    ValidatingBackup,
+    /// Rolling back a specific file
+    Rolling {
+        file: String,
+        index: usize,
+        total: usize,
+        action: ProgressAction,
+    },
+    /// Rollback completed successfully
+    Done { files_restored: usize },
+    /// An error occurred during rollback
+    Error { message: String },
+}
 
 /// Core patch runner that handles extraction and application
 pub struct PatchRunner {
@@ -156,6 +179,104 @@ impl PatchRunner {
             files_patched: self.manifest.entries.len(),
         });
 
+        Ok(())
+    }
+
+    /// Get the number of entries in the manifest
+    pub fn entry_count(&self) -> usize {
+        self.manifest.entries.len()
+    }
+
+    /// Validate that target folder can be patched (pre-apply check)
+    ///
+    /// Returns Ok(()) if all files are in expected pre-patch state,
+    /// or an error describing the first problem found.
+    pub fn validate_target(&self, target: &Path) -> Result<(), PatchError> {
+        patch::validate_entries(&self.manifest.entries, target, None::<fn(Progress)>)
+    }
+
+    /// Check if target appears to be in patched state
+    ///
+    /// Returns true if all files match their expected post-patch hashes.
+    pub fn is_patched(&self, target: &Path) -> bool {
+        patch::validate_patched_entries(&self.manifest.entries, target, None::<fn(Progress)>).is_ok()
+    }
+
+    /// Check if backup directory exists in target
+    pub fn has_backup(target: &Path) -> bool {
+        target.join(BACKUP_DIR).exists()
+    }
+
+    /// Perform rollback with validation and progress reporting
+    ///
+    /// If `force` is false, validates that target files are in expected patched state first.
+    /// If target files have been modified, returns TargetModified event and does not rollback.
+    /// Always validates backup integrity before proceeding.
+    pub fn rollback<F>(&self, target: &Path, force: bool, mut on_progress: F) -> Result<(), PatchError>
+    where
+        F: FnMut(RollbackEvent),
+    {
+        let backup_dir = target.join(BACKUP_DIR);
+
+        // Check backup exists
+        if !backup_dir.exists() {
+            on_progress(RollbackEvent::Error {
+                message: format!("Backup directory not found: {}", backup_dir.display()),
+            });
+            return Err(PatchError::RollbackFailed {
+                reason: "backup directory not found".to_string(),
+            });
+        }
+
+        // Validate target (patched files) unless force
+        if !force {
+            on_progress(RollbackEvent::ValidatingTarget);
+            if let Err(e) = patch::validate_patched_entries(
+                &self.manifest.entries,
+                target,
+                None::<fn(Progress)>,
+            ) {
+                on_progress(RollbackEvent::TargetModified {
+                    reason: e.to_string(),
+                });
+                return Err(e);
+            }
+        }
+
+        // Always validate backup integrity
+        on_progress(RollbackEvent::ValidatingBackup);
+        if let Err(e) = patch::validate_backup(&self.manifest.entries, &backup_dir, None::<fn(Progress)>) {
+            on_progress(RollbackEvent::Error {
+                message: format!("Backup validation failed: {}", e),
+            });
+            return Err(e);
+        }
+
+        // Perform rollback
+        let entries: Vec<_> = self.manifest.entries.iter().collect();
+        let total = entries.len();
+        patch::rollback(&entries, target, &backup_dir, Some(|p: Progress| {
+            on_progress(RollbackEvent::Rolling {
+                file: p.file.to_owned(),
+                index: p.index,
+                total: p.total,
+                action: p.action,
+            });
+        }))?;
+
+        on_progress(RollbackEvent::Done {
+            files_restored: total,
+        });
+
+        Ok(())
+    }
+
+    /// Delete the backup directory
+    pub fn delete_backup(target: &Path) -> std::io::Result<()> {
+        let backup_dir = target.join(BACKUP_DIR);
+        if backup_dir.exists() {
+            fs::remove_dir_all(&backup_dir)?;
+        }
         Ok(())
     }
 }
