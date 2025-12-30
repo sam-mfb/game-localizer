@@ -125,8 +125,9 @@ The `graft-builder` tool creates standalone patcher executables with embedded pa
 graft-builder build <patch-dir> [OPTIONS]
 
 OPTIONS:
-    -o, --output <DIR>    Output directory [default: ./dist]
-    -n, --name <NAME>     Patcher name [default: patcher]
+    -o, --output <DIR>       Output directory [default: ./dist]
+    -n, --name <NAME>        Patcher name [default: patcher]
+        --targets <TARGETS>  Cross-compile for specific targets (comma-separated)
 ```
 
 ### Example
@@ -142,4 +143,34 @@ graft-builder build my-patch/ -o dist/ -n my-patcher
 ./dist/my-patcher                              # GUI mode
 ./dist/my-patcher headless apply /target -y   # CLI mode (apply)
 ./dist/my-patcher headless rollback /target   # CLI mode (rollback)
+```
+
+### Cross-Compilation
+
+Build patchers for multiple platforms using [cross](https://github.com/cross-rs/cross).
+
+**Prerequisites:**
+- Docker installed and running
+- Install cross: `cargo install cross`
+
+**Available targets:**
+| Name | Platform |
+|------|----------|
+| `linux-x64` | Linux x86_64 |
+| `linux-arm64` | Linux ARM64 |
+| `windows` | Windows x86_64 |
+
+**Example:**
+
+```bash
+# Build for a single target
+graft-builder build my-patch/ -n my-patcher --targets linux-x64
+
+# Build for multiple targets
+graft-builder build my-patch/ -n my-patcher --targets linux-x64,linux-arm64,windows
+
+# Output files:
+# dist/my-patcher-linux-x64
+# dist/my-patcher-linux-arm64
+# dist/my-patcher-windows.exe
 ```
