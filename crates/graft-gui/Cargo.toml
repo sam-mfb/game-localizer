@@ -16,14 +16,15 @@ clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 graft-core = { path = "../graft-core" }
 
-# Linux: Use wgpu (glow has X server issues)
+# Linux: Use wgpu with vulkan + gles backends (gles works for network X11)
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.29", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
+wgpu = { version = "27", default-features = false, features = ["vulkan", "gles"] }
 
-# Windows: Use glow (wgpu has MinGW/cross-compilation issues causing white text)
+# Windows: Use glow (wgpu has MinGW/cross-compilation issues)
 [target.'cfg(target_os = "windows")'.dependencies]
-eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
 
 # macOS: Use glow (safer default)
 [target.'cfg(target_os = "macos")'.dependencies]
-eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }

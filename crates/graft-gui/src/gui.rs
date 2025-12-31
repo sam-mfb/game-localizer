@@ -473,9 +473,9 @@ impl GraftApp {
     /// Render a scrollable log area with fixed height
     fn render_log(ui: &mut egui::Ui, log: &[String]) {
         let height = 120.0;
-        egui::Frame::none()
+        egui::Frame::NONE
             .fill(egui::Color32::from_gray(245))
-            .rounding(4.0)
+            .corner_radius(4.0)
             .inner_margin(4.0)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
@@ -1091,34 +1091,9 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
         GraftApp::demo()
     };
 
-    eframe::run_native("Graft Patcher", options, Box::new(|cc| {
-        // Build our custom light visuals with explicit dark text
-        let mut visuals = egui::Visuals::light();
-        let dark_text = egui::Color32::from_gray(30);
-        visuals.override_text_color = Some(dark_text);
-        visuals.widgets.noninteractive.fg_stroke.color = dark_text;
-        visuals.widgets.inactive.fg_stroke.color = dark_text;
-        visuals.widgets.hovered.fg_stroke.color = dark_text;
-        visuals.widgets.active.fg_stroke.color = dark_text;
-        visuals.widgets.open.fg_stroke.color = dark_text;
-
-        // Build a complete style with our visuals
-        let mut style = egui::Style::default();
-        style.visuals = visuals.clone();
-
-        // Configure options to force light theme and use our custom style
-        cc.egui_ctx.options_mut(|opts| {
-            opts.theme_preference = egui::ThemePreference::Light;
-            opts.fallback_theme = egui::Theme::Light;
-            // Set both light and dark styles to our custom light style
-            // This ensures no matter what theme is detected, we use our style
-            opts.light_style = std::sync::Arc::new(style.clone());
-            opts.dark_style = std::sync::Arc::new(style.clone());
-        });
-
-        // Also set visuals directly to be safe
-        cc.egui_ctx.set_visuals(visuals);
-
-        Ok(Box::new(app))
-    }))
+    eframe::run_native(
+        "Graft Patcher",
+        options,
+        Box::new(|_cc| Ok(Box::new(app))),
+    )
 }
