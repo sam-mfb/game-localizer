@@ -129,15 +129,23 @@ fn get_cached_stub(target: &Target) -> Result<Vec<u8>, StubError> {
 }
 
 /// Download stub from GitHub releases and cache it.
+///
+/// By default, downloads from the "latest" release. Set `GRAFT_STUB_VERSION`
+/// environment variable to download a specific version (e.g., "0.1.0").
 fn download_stub(target: &Target) -> Result<Vec<u8>, StubError> {
-    let version = env!("CARGO_PKG_VERSION");
     let filename = targets::stub_filename(target);
 
     // TODO: Replace with actual GitHub org/repo
-    let url = format!(
-        "https://github.com/OWNER/graft/releases/download/v{}/{}",
-        version, filename
-    );
+    let url = match std::env::var("GRAFT_STUB_VERSION") {
+        Ok(version) => format!(
+            "https://github.com/OWNER/graft/releases/download/v{}/{}",
+            version, filename
+        ),
+        Err(_) => format!(
+            "https://github.com/OWNER/graft/releases/latest/download/{}",
+            filename
+        ),
+    };
 
     println!("Downloading stub for {}...", target.name);
     println!("  URL: {}", url);
