@@ -1088,8 +1088,13 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
     };
 
     eframe::run_native("Graft Patcher", options, Box::new(|cc| {
+        // Disable system theme detection - force light theme
+        // This prevents Windows from overriding our theme settings
+        cc.egui_ctx.options_mut(|opts| {
+            opts.theme_preference = egui::ThemePreference::Light;
+        });
+
         // Use light theme with explicit text colors for Windows compatibility
-        // Windows can have issues with default light theme text colors
         let mut visuals = egui::Visuals::light();
         let dark_text = egui::Color32::from_gray(30);
         visuals.override_text_color = Some(dark_text);
