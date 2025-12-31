@@ -169,15 +169,33 @@ graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
 
 Patchers are created using a "self-appending binary" approach:
 
-1. Pre-built stub binaries are downloaded on first use (cached in `~/.cache/graft/stubs/`)
-2. Your patch data (tar.gz archive) is appended to the stub
+1. The `graft` CLI includes pre-built stub binaries for all supported platforms
+2. When you run `graft patcher create`, your patch data (tar.gz archive) is appended to the appropriate stub
 3. At runtime, the patcher reads the appended data from itself
 
-This means you can create patchers for any platform without needing cross-compilation tools!
+This means you can create patchers for any platform from any platform - no cross-compilation needed!
 
-### Stub Version
+## Development
 
-By default, stubs are downloaded from the latest GitHub release. To pin to a specific version:
+### Building from Source
+
+```bash
+cargo build --release -p graft
+```
+
+When building from source without the `embedded-stubs` feature, stubs are downloaded from GitHub releases on first use and cached in `~/.cache/graft/stubs/`.
+
+### Build Features
+
+| Feature | Description |
+|---------|-------------|
+| (default) | Downloads stubs from GitHub releases on demand |
+| `native-stub` | Embeds only the current platform's stub |
+| `embedded-stubs` | Embeds all platform stubs (used for releases) |
+
+### Stub Version (Development)
+
+When using downloaded stubs, they come from the latest release by default. To pin to a specific version:
 
 ```bash
 GRAFT_STUB_VERSION=0.1.0 graft patcher create my-patch/ -o my-patcher
