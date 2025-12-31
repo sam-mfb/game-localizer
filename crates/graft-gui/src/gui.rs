@@ -606,13 +606,17 @@ impl GraftApp {
                     } = &self.state
                     {
                         let mut new_log = log.clone();
-                        let new_completed = completed_phases + 1;
-                        new_log.push(format!(
-                            "  [{}/{}] Patching: file_{}.bin",
-                            new_completed, phase_total, new_completed
-                        ));
-                        let new_progress = new_completed as f32 / 3.0;
-                        if new_completed >= 3 {
+                        let batch_size = 10; // Simulate ~10 ops per click
+                        let new_completed = (completed_phases + batch_size).min(*phase_total);
+                        // Log each simulated operation in the batch
+                        for i in (*completed_phases + 1)..=new_completed {
+                            new_log.push(format!(
+                                "  [{}/{}] Patching: file_{}.bin",
+                                i, phase_total, i
+                            ));
+                        }
+                        let new_progress = new_completed as f32 / *phase_total as f32;
+                        if new_completed >= *phase_total {
                             self.state = AppState::Success {
                                 path: path.clone(),
                                 files_patched: *phase_total,
