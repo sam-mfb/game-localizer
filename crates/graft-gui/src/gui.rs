@@ -1088,9 +1088,17 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
     };
 
     eframe::run_native("Graft Patcher", options, Box::new(|cc| {
-        // Use light theme with explicit text color for Windows compatibility
+        // Use light theme with explicit text colors for Windows compatibility
+        // Windows can have issues with default light theme text colors
         let mut visuals = egui::Visuals::light();
-        visuals.override_text_color = Some(egui::Color32::BLACK);
+        let dark_text = egui::Color32::from_gray(30);
+        visuals.override_text_color = Some(dark_text);
+        // Also set widget foreground strokes to ensure all text is dark
+        visuals.widgets.noninteractive.fg_stroke.color = dark_text;
+        visuals.widgets.inactive.fg_stroke.color = dark_text;
+        visuals.widgets.hovered.fg_stroke.color = dark_text;
+        visuals.widgets.active.fg_stroke.color = dark_text;
+        visuals.widgets.open.fg_stroke.color = dark_text;
         cc.egui_ctx.set_visuals(visuals);
         Ok(Box::new(app))
     }))
