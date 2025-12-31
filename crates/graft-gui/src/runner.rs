@@ -182,11 +182,6 @@ impl PatchRunner {
         Ok(())
     }
 
-    /// Get the number of entries in the manifest
-    pub fn entry_count(&self) -> usize {
-        self.manifest.entries.len()
-    }
-
     /// Validate that target folder can be patched (pre-apply check)
     ///
     /// Returns Ok(()) if all files are in expected pre-patch state,

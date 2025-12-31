@@ -27,8 +27,6 @@ use std::io::{self, Read, Seek, SeekFrom};
 pub enum SelfReadError {
     /// No appended data was found (no magic marker).
     NoAppendedData,
-    /// Magic marker was found but is invalid.
-    InvalidMagic,
     /// The size field is invalid or corrupt.
     InvalidSize,
     /// An I/O error occurred.
@@ -39,7 +37,6 @@ impl std::fmt::Display for SelfReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SelfReadError::NoAppendedData => write!(f, "No appended patch data found"),
-            SelfReadError::InvalidMagic => write!(f, "Invalid magic marker in appended data"),
             SelfReadError::InvalidSize => write!(f, "Invalid size in appended data"),
             SelfReadError::IoError(e) => write!(f, "I/O error reading appended data: {}", e),
         }

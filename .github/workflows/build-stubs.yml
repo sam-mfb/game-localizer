@@ -1,0 +1,75 @@
+name: Build Stubs
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-stubs:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            cross: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            cross: true
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            name: windows-x64
+            cross: true
+          - os: macos-15
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            cross: false
+          - os: macos-15-large
+            target: x86_64-apple-darwin
+            name: macos-x64
+            cross: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build stub (native)
+        if: ${{ !matrix.cross }}
+        run: |
+          cargo build --release --package graft-gui --target ${{ matrix.target }}
+
+      - name: Build stub (cross)
+        if: matrix.cross
+        run: |
+          cross build --release --package graft-gui --target ${{ matrix.target }}
+
+      - name: Prepare stub artifact
+        shell: bash
+        run: |
+          SUFFIX=""
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            SUFFIX=".exe"
+          fi
+          mkdir -p stubs
+          cp target/${{ matrix.target }}/release/graft-gui${SUFFIX} \
+             stubs/graft-gui-stub-${{ matrix.name }}${SUFFIX}
+
+      - name: Upload stub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stub-${{ matrix.name }}
+          path: stubs/

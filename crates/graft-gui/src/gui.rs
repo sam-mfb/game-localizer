@@ -51,7 +51,6 @@ pub enum AppState {
     RollingBack {
         path: PathBuf,
         log: Vec<String>,
-        force: bool,
     },
     /// Rollback needs confirmation - target files have changed
     RollbackWarning { path: PathBuf, reason: String },
@@ -449,7 +448,6 @@ impl GraftApp {
         self.state = AppState::RollingBack {
             path: path.clone(),
             log: vec!["[Rolling back]".to_string()],
-            force,
         };
 
         let (patch_data, tx) = patch_data;
@@ -1090,8 +1088,10 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
     };
 
     eframe::run_native("Graft Patcher", options, Box::new(|cc| {
-        // Use light theme
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
+        // Use light theme with explicit text color for Windows compatibility
+        let mut visuals = egui::Visuals::light();
+        visuals.override_text_color = Some(egui::Color32::BLACK);
+        cc.egui_ctx.set_visuals(visuals);
         Ok(Box::new(app))
     }))
 }
