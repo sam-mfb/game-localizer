@@ -2,6 +2,22 @@
 
 Binary patching toolkit for creating and applying patches to files.
 
+## Quick Start
+
+```bash
+# 1. Create a patch from original and modified directories
+graft patch create original/ modified/ my-patch/
+
+# 2. Create self-contained patchers for distribution
+graft patcher create my-patch/ --target linux-x64 -o my-patcher-linux
+graft patcher create my-patch/ --target windows-x64 -o my-patcher.exe
+graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
+
+# 3. End users just run the patcher
+./my-patcher-linux                              # GUI mode
+./my-patcher-linux headless apply /target -y   # CLI mode
+```
+
 ## Project Structure
 
 ```
