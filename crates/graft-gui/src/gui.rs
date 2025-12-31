@@ -474,10 +474,12 @@ impl GraftApp {
     fn render_log(ui: &mut egui::Ui, log: &[String]) {
         let height = 120.0;
         egui::Frame::NONE
-            .fill(egui::Color32::from_gray(245))
+            .fill(ui.visuals().extreme_bg_color)
             .corner_radius(4.0)
             .inner_margin(4.0)
+            .outer_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 egui::ScrollArea::vertical()
                     .max_height(height)
                     .min_scrolled_height(height)
