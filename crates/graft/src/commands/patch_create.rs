@@ -2,11 +2,14 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use graft_core::patch::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
+use graft_core::patch::{ASSETS_DIR, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, ICON_FILENAME, MANIFEST_FILENAME};
 use graft_core::utils::diff::create_diff;
 use graft_core::utils::dir_scan::{categorize_files, FileChange};
 use graft_core::utils::hash::hash_bytes;
 use graft_core::utils::manifest::{Manifest, ManifestEntry};
+
+/// Default icon embedded at compile time
+const DEFAULT_ICON: &[u8] = include_bytes!("../../assets/default_icon.png");
 
 /// Create a patch from two directories.
 /// Outputs a patch directory containing manifest.json, diffs/, and files/.
@@ -89,6 +92,11 @@ pub fn run(
     // Write manifest
     let manifest_path = output_dir.join(MANIFEST_FILENAME);
     manifest.save(&manifest_path)?;
+
+    // Create assets directory with default icon
+    let assets_dir = output_dir.join(ASSETS_DIR);
+    fs::create_dir_all(&assets_dir)?;
+    fs::write(assets_dir.join(ICON_FILENAME), DEFAULT_ICON)?;
 
     Ok(())
 }

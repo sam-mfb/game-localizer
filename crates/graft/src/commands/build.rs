@@ -2,13 +2,16 @@
 //!
 //! This command creates standalone patcher binaries by concatenating
 //! a pre-built stub with the patch archive data.
+//!
+//! For macOS targets, creates .app bundles with icons.
 
+use crate::commands::macos_bundle::{self, BundleError};
 use crate::stubs::{self, StubError};
-use crate::targets;
+use crate::targets::{self, Target};
 use graft_core::archive::{self, MAGIC_MARKER};
 use graft_core::patch;
 use graft_core::utils::manifest::PatchInfo;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -25,6 +28,8 @@ pub enum PatcherError {
     OutputError(io::Error),
     /// Invalid target specified.
     InvalidTarget(String),
+    /// Failed to create macOS bundle.
+    BundleError(BundleError),
 }
 
 impl std::fmt::Display for PatcherError {
@@ -35,6 +40,7 @@ impl std::fmt::Display for PatcherError {
             PatcherError::StubError(e) => write!(f, "Stub error: {}", e),
             PatcherError::OutputError(e) => write!(f, "Output error: {}", e),
             PatcherError::InvalidTarget(t) => write!(f, "Invalid target: {}", t),
+            PatcherError::BundleError(e) => write!(f, "Bundle creation failed: {}", e),
         }
     }
 }
@@ -45,9 +51,15 @@ impl std::error::Error for PatcherError {
             PatcherError::ArchiveCreation(e) => Some(e),
             PatcherError::StubError(e) => Some(e),
             PatcherError::OutputError(e) => Some(e),
+            PatcherError::BundleError(e) => Some(e),
             _ => None,
         }
     }
+}
+
+/// Check if a target is macOS.
+fn is_macos_target(target: &Target) -> bool {
+    target.name.starts_with("macos-")
 }
 
 /// Create a self-appending patcher executable.
@@ -55,7 +67,7 @@ impl std::error::Error for PatcherError {
 /// # Arguments
 /// * `patch_dir` - Path to the patch directory (containing manifest.json)
 /// * `target_name` - Optional target platform name (defaults to current platform)
-/// * `output_path` - Optional output file path (defaults to ./patcher or ./patcher.exe)
+/// * `output_path` - Optional output file path (defaults to ./patcher, ./patcher.exe, or ./patcher.app)
 pub fn run(
     patch_dir: &Path,
     target_name: Option<&str>,
@@ -93,57 +105,93 @@ pub fn run(
     let stub_data = stubs::get_stub(&target).map_err(PatcherError::StubError)?;
     println!("done ({} bytes)", stub_data.len());
 
-    // 5. Determine output path
+    // 5. Create combined executable data
+    let executable_data = create_executable_bytes(&stub_data, &archive_data);
+    let total_size = executable_data.len();
+
+    // 6. Determine output path and create patcher
+    let is_macos = is_macos_target(&target);
+
     let output = match output_path {
         Some(p) => p.to_path_buf(),
         None => {
-            let name = format!("patcher{}", target.binary_suffix);
-            Path::new(".").join(name)
+            if is_macos {
+                Path::new(".").join("patcher.app")
+            } else {
+                let name = format!("patcher{}", target.binary_suffix);
+                Path::new(".").join(name)
+            }
         }
     };
 
-    // 6. Create output file with appended data
-    print!("Writing patcher to {}... ", output.display());
-    io::stdout().flush().ok();
+    if is_macos {
+        // Create .app bundle for macOS
+        print!("Creating macOS bundle at {}... ", output.display());
+        io::stdout().flush().ok();
 
-    let mut file = File::create(&output).map_err(PatcherError::OutputError)?;
+        // Derive app name from output path
+        let app_name = output
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("patcher");
+
+        macos_bundle::create_bundle(
+            &output,
+            &executable_data,
+            patch_dir,
+            app_name,
+            info.title.as_deref(),
+            &info.version.to_string(),
+        )
+        .map_err(PatcherError::BundleError)?;
+
+        println!("done");
+        println!();
+        println!("Created: {} ({} bytes executable)", output.display(), total_size);
+    } else {
+        // Create plain binary for other platforms
+        print!("Writing patcher to {}... ", output.display());
+        io::stdout().flush().ok();
+
+        fs::write(&output, &executable_data).map_err(PatcherError::OutputError)?;
+
+        // Make executable on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&output)
+                .map_err(PatcherError::OutputError)?
+                .permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&output, perms).map_err(PatcherError::OutputError)?;
+        }
+
+        println!("done");
+        println!();
+        println!("Created: {} ({} bytes)", output.display(), total_size);
+    }
+
+    Ok(())
+}
+
+/// Create the combined executable bytes (stub + archive + size + magic).
+fn create_executable_bytes(stub_data: &[u8], archive_data: &[u8]) -> Vec<u8> {
+    let mut data = Vec::with_capacity(stub_data.len() + archive_data.len() + 16);
 
     // Write stub
-    file.write_all(&stub_data)
-        .map_err(PatcherError::OutputError)?;
+    data.extend_from_slice(stub_data);
 
     // Write archive
-    file.write_all(&archive_data)
-        .map_err(PatcherError::OutputError)?;
+    data.extend_from_slice(archive_data);
 
     // Write size (8 bytes, little-endian)
     let size_bytes = (archive_data.len() as u64).to_le_bytes();
-    file.write_all(&size_bytes)
-        .map_err(PatcherError::OutputError)?;
+    data.extend_from_slice(&size_bytes);
 
     // Write magic marker
-    file.write_all(MAGIC_MARKER)
-        .map_err(PatcherError::OutputError)?;
+    data.extend_from_slice(MAGIC_MARKER);
 
-    file.flush().map_err(PatcherError::OutputError)?;
-
-    // Make executable on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&output)
-            .map_err(PatcherError::OutputError)?
-            .permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&output, perms).map_err(PatcherError::OutputError)?;
-    }
-
-    let total_size = stub_data.len() + archive_data.len() + 16;
-    println!("done");
-    println!();
-    println!("Created: {} ({} bytes)", output.display(), total_size);
-
-    Ok(())
+    data
 }
 
 #[cfg(test)]
