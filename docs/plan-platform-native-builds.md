@@ -2,101 +2,149 @@
 
 ## Overview
 
-Make graft produce proper platform-native applications:
-- Windows: GUI apps (no console window)
-- macOS: .app bundles
+Make graft produce proper platform-native applications with customizable metadata:
+- Window title configurable via manifest
+- Custom icons for Windows and macOS
+- Windows: GUI apps with embedded icons
+- macOS: .app bundles with icons
 - Rename `patcher` subcommand to `build`
 - Auto-demo mode for bare stubs
 
 ---
 
-## A. Auto-Demo Mode for Bare Stubs
+## A. Title in Manifest
 
-**Goal:** When graft-gui runs without embedded patch data, automatically launch demo mode instead of requiring `demo` subcommand.
+**Goal:** Allow customizing the patcher window title.
 
-### Changes
+### Changes to `graft patch` command
 
-**`crates/graft-gui/src/main.rs`:**
-- Modify startup logic:
-  1. Try to read embedded patch data
-  2. If found → run patcher
-  3. If not found → run demo mode automatically
-- Remove `demo` subcommand from CLI (no longer needed)
+Add optional `--title` parameter:
+```bash
+graft patch --old v1/ --new v2/ --output patch/ --title "My Game Patcher"
+```
 
-**Benefits:**
-- Double-click bare stub → see demo UI
-- Double-click patcher (stub + patch) → run patcher
-- No CLI needed for basic usage
+### Manifest changes (`patch/manifest.json`)
+
+```json
+{
+  "version": "1.0.0",
+  "title": "My Game Patcher",
+  "entries": [...]
+}
+```
+
+- If `--title` not provided, default to "Graft Patcher"
+- User can edit manifest.json directly to change title
+
+### GUI changes (`graft-gui`)
+
+- Read title from embedded patch manifest
+- Pass to `eframe::run_native(title, ...)`
 
 ---
 
-## B. Headless Mode Caveats
+## B. Asset Folder with Default Icons
 
-**Goal:** Keep `headless` subcommand but document platform limitations.
+**Goal:** Provide default icons that users can replace.
 
-### README Documentation
+### Folder structure
 
-Add note:
 ```
-### Headless Mode (CLI)
-
-The `headless` subcommand applies patches without GUI:
-
-    ./patcher headless --target /path/to/game
-
-**Windows Note:** When built as a GUI application (default for releases),
-stdout/stderr are not connected when run from a terminal. For scripted
-use on Windows, run from PowerShell or use the main `graft` CLI tool.
-
-**macOS Note:** For .app bundles, run the binary inside the bundle directly:
-
-    ./MyPatcher.app/Contents/MacOS/MyPatcher headless --target /path/to/game
+patch/
+  manifest.json
+  diffs/
+  files/
+  .graft_assets/
+    icon.png          # High-res source (1024x1024 recommended)
 ```
 
-No code changes required.
+### Default icons
+
+Graft embeds a generic default icon. When `graft patch` creates a patch:
+1. Creates `.graft_assets/` folder
+2. Copies default `icon.png` into it
+
+**User workflow:**
+- Replace `.graft_assets/icon.png` with custom icon (1024x1024 PNG recommended)
+- Run `graft build` - icons are embedded/bundled automatically
+
+### Icon file to create (manual step)
+
+Create a simple generic graft icon:
+- `icon.png` - 1024x1024 PNG (source for both platforms)
+
+Location in graft source:
+```
+crates/graft/assets/
+  default_icon.png
+```
 
 ---
 
-## C. Platform-Native Builds
+## C. Windows Icon Embedding
 
-### C1. Windows GUI Subsystem
+**Goal:** Embed icons in Windows .exe using pure Rust (cross-platform).
 
-**Goal:** Windows patchers launch without console window.
+### Crate: [editpe](https://crates.io/crates/editpe)
 
-**`crates/graft-gui/src/main.rs`:**
-```rust
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-```
-
-This is a compile-time attribute applied to the stub. When users double-click the .exe, no console window appears.
-
-### C2. macOS .app Bundles
-
-**Goal:** `graft build` creates .app bundles for macOS targets.
-
-**New module: `crates/graft/src/commands/build/macos_bundle.rs`:**
+Cross-platform PE resource editor. Works on Linux/macOS to modify Windows executables.
 
 ```rust
-pub fn create_app_bundle(
-    binary_path: &Path,
-    output_path: &Path,
-    app_name: &str,
-    version: &str,
-) -> Result<(), Error>
+use editpe::Image;
+
+let mut image = Image::parse(&exe_bytes)?;
+let mut resources = image.resource_directory().cloned().unwrap_or_default();
+resources.set_main_icon_file(&icon_path)?;  // Accepts PNG, auto-converts
+image.set_resource_directory(resources)?;
+let modified = image.write()?;
 ```
 
-Creates:
+### Add to `crates/graft/Cargo.toml`
+
+```toml
+editpe = { version = "0.2", default-features = false, features = ["std", "images"] }
+```
+
+---
+
+## D. macOS .app Bundle with Icon
+
+**Goal:** Create .app bundles with custom icons.
+
+### Bundle structure
+
 ```
 MyPatcher.app/
   Contents/
     MacOS/
-      MyPatcher          (the patched binary)
-    Info.plist           (generated from template)
+      MyPatcher
+    Info.plist
     Resources/
-      (optional: icon.icns)
+      AppIcon.icns
 ```
 
-**Info.plist template:**
+### Icon handling
+
+Convert `.graft_assets/icon.png` to .icns format using the [`icns`](https://crates.io/crates/icns) crate.
+
+```rust
+use icns::{IconFamily, Image};
+
+let png_data = fs::read("icon.png")?;
+let image = Image::read_png(&png_data)?;
+let mut icon_family = IconFamily::new();
+icon_family.add_icon(&image)?;
+icon_family.write(File::create("AppIcon.icns")?)?;
+```
+
+### Add to `crates/graft/Cargo.toml`
+
+```toml
+icns = "0.3"
+```
+
+### Info.plist template
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
@@ -107,13 +155,15 @@ MyPatcher.app/
     <key>CFBundleIdentifier</key>
     <string>com.graft.patcher.{app_name}</string>
     <key>CFBundleName</key>
-    <string>{app_name}</string>
+    <string>{title}</string>
     <key>CFBundleVersion</key>
     <string>{version}</string>
     <key>CFBundleShortVersionString</key>
     <string>{version}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.13</string>
     <key>NSHighResolutionCapable</key>
@@ -122,61 +172,68 @@ MyPatcher.app/
 </plist>
 ```
 
-### C3. Update Build Command Logic
+---
 
-**`crates/graft/src/commands/build.rs`** (renamed from patcher_create.rs):
+## E. Auto-Demo Mode for Bare Stubs
+
+**Goal:** Run demo mode automatically when no patch data embedded.
+
+### Logic in `graft-gui/src/main.rs`
 
 ```rust
-pub fn run(patch_dir: &Path, target: &Target, output: &Path) -> Result<()> {
-    // 1. Get stub for target
-    let stub = stubs::get_stub(target)?;
-
-    // 2. Create patched binary (stub + patch data)
-    let patched = create_patched_binary(stub, patch_dir)?;
-
-    // 3. Platform-specific output
-    match target.os {
-        "macos" => {
-            // Create .app bundle
-            let app_name = output.file_stem().unwrap_or("Patcher");
-            macos_bundle::create_app_bundle(&patched, output, app_name, version)?;
-        }
-        _ => {
-            // Windows/Linux: just write the binary
-            fs::write(output, patched)?;
-        }
+fn main() {
+    match self_read::read_appended_data() {
+        Ok(patch_data) => run_patcher(patch_data),
+        Err(_) => run_demo(),
     }
 }
 ```
 
+- Remove `demo` subcommand from CLI
+- Keep `headless` subcommand for scripted use
+
 ---
 
-## D. Rename `patcher` to `build`
+## F. Windows GUI Subsystem
+
+**Goal:** No console window on Windows.
+
+### Add to `crates/graft-gui/src/main.rs`
+
+```rust
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+```
+
+---
+
+## G. Rename `patcher` to `build`
 
 ### Changes
 
-**`crates/graft/src/main.rs`:**
-```rust
-enum Commands {
-    // ... existing commands ...
+- Rename `commands/patcher_create.rs` → `commands/build.rs`
+- Update CLI enum: `Patcher` → `Build`
+- Update usage: `graft build --patch patch/ --target windows-x64 --output MyPatcher.exe`
 
-    /// Build a self-contained patcher application
-    Build {
-        /// Directory containing patch files
-        patch_dir: PathBuf,
-        /// Target platform (e.g., windows-x64, macos-arm64)
-        target: String,
-        /// Output path
-        #[arg(short, long)]
-        output: PathBuf,
-    },
-}
+---
+
+## H. Headless Mode Documentation
+
+Add to README:
+
+```markdown
+### Headless Mode (CLI)
+
+The `headless` subcommand applies patches without GUI:
+
+    ./patcher headless --target /path/to/game
+
+**Windows Note:** stdout/stderr are not connected when double-clicked.
+For scripted use, run from terminal or use the main `graft` CLI.
+
+**macOS Note:** For .app bundles, run the binary inside:
+
+    ./MyPatcher.app/Contents/MacOS/MyPatcher headless --target /path/to/game
 ```
-
-**Rename files:**
-- `commands/patcher_create.rs` → `commands/build.rs`
-
-**Update mod.rs and imports accordingly.**
 
 ---
 
@@ -184,27 +241,71 @@ enum Commands {
 
 | File | Action |
 |------|--------|
+| `crates/graft/Cargo.toml` | Add `editpe`, `icns` dependencies |
+| `crates/graft/src/main.rs` | Rename patcher → build, add --title flag to patch |
+| `crates/graft/src/commands/patch_create.rs` | Add title to manifest, create .graft_assets |
+| `crates/graft/src/commands/patcher_create.rs` | Rename to build.rs, add icon/bundle logic |
+| `crates/graft/src/commands/build/windows_icon.rs` | New: editpe icon embedding |
+| `crates/graft/src/commands/build/macos_bundle.rs` | New: .app bundle + icns creation |
+| `crates/graft/assets/default_icon.png` | New: default icon (manual creation) |
+| `crates/graft-core/src/manifest.rs` | Add `title` field to Manifest struct |
 | `crates/graft-gui/src/main.rs` | Add windows_subsystem, auto-demo logic |
-| `crates/graft/src/main.rs` | Rename patcher → build |
-| `crates/graft/src/commands/patcher_create.rs` | Rename to build.rs, add bundle logic |
-| `crates/graft/src/commands/build/macos_bundle.rs` | New: .app bundle creation |
+| `crates/graft-gui/src/gui.rs` | Use title from manifest |
 | `README.md` | Document headless caveats |
 
 ---
 
 ## Output Conventions
 
-| Target | Output |
-|--------|--------|
-| `windows-x64` | `MyPatcher.exe` (GUI subsystem) |
-| `linux-x64` | `MyPatcher` (executable) |
-| `macos-arm64` | `MyPatcher.app/` (bundle) |
-| `macos-x64` | `MyPatcher.app/` (bundle) |
+| Target | Output | Icon Source |
+|--------|--------|-------------|
+| `windows-x64` | `MyPatcher.exe` | `.graft_assets/icon.png` → embedded via editpe |
+| `linux-x64` | `MyPatcher` | (no icon) |
+| `macos-arm64` | `MyPatcher.app/` | `.graft_assets/icon.png` → .icns in bundle |
+| `macos-x64` | `MyPatcher.app/` | `.graft_assets/icon.png` → .icns in bundle |
+
+---
+
+## Dependencies to Add
+
+```toml
+# crates/graft/Cargo.toml
+editpe = { version = "0.2", default-features = false, features = ["std", "images"] }
+icns = "0.3"
+```
+
+---
+
+## User Workflow Summary
+
+1. `graft patch --old v1/ --new v2/ --output patch/ --title "My Patcher"`
+2. (Optional) Replace `patch/.graft_assets/icon.png` with custom 1024x1024 PNG
+3. `graft build --patch patch/ --target windows-x64 --output MyPatcher.exe`
+4. Distribute MyPatcher.exe (or .app for macOS)
+
+---
+
+## Implementation Phases
+
+### Phase 1: Core Restructuring
+- [ ] Rename `patcher` → `build` command (section G)
+- [ ] Add `--title` to `graft patch`, update manifest (section A)
+- [ ] Auto-demo mode for bare stubs (section E)
+- [ ] Windows GUI subsystem attribute (section F)
+- [ ] Headless mode documentation (section H)
+
+### Phase 2: macOS Bundles
+- [ ] Create `.graft_assets/` folder with default icon (section B)
+- [ ] macOS .app bundle creation (section D)
+- [ ] Icon embedding via `icns` crate
+
+### Phase 3: Windows Icons
+- [ ] Windows icon embedding via `editpe` crate (section C)
+- [ ] Test cross-platform PE modification
 
 ---
 
 ## Future Considerations (Not in Scope)
 
 - Code signing / notarization (separate CI workflow)
-- Custom icons for .app bundles
-- Unpatch/restore functionality
+- Linux .desktop file generation
