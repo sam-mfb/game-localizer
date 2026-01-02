@@ -28,3 +28,9 @@ eframe = { version = "0.33", default-features = false, features = ["default_font
 # macOS: Use glow (safer default)
 [target.'cfg(target_os = "macos")'.dependencies]
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
+
+# Windows: Build dependencies for icon embedding
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winres = "0.1"
+image = "0.25"
+ico = "0.3"

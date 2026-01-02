@@ -76,6 +76,11 @@ jobs:
         if: startsWith(matrix.name, 'macos-')
         shell: bash
         run: |
+          # Convert PNG to ICNS using graft-icon
+          cargo run --release -p graft-icon -- icns \
+            crates/graft/assets/default_icon.png \
+            target/AppIcon.icns
+
           APP_DIR="stubs/GraftPatcher.app"
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
@@ -84,8 +89,8 @@ jobs:
           cp target/${{ matrix.target }}/release/graft-gui "$APP_DIR/Contents/MacOS/graft-gui"
           chmod +x "$APP_DIR/Contents/MacOS/graft-gui"
 
-          # Copy default icon
-          cp crates/graft-gui/assets/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+          # Copy converted icon
+          cp target/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 
           # Create Info.plist
           printf '%s\n' \
