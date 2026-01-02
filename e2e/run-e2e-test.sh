@@ -2,11 +2,20 @@
 set -e
 
 # E2E test script for graft patcher workflow
-# Currently supports Linux only
+# Supports Linux, macOS, and Windows (via Git Bash)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORK_DIR="$SCRIPT_DIR/.e2e-work"
+
+# Parse arguments
+STUB_DIR=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --stub-dir) STUB_DIR="$2"; shift 2 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
 
 # Cleanup on exit
 cleanup() {
@@ -18,18 +27,53 @@ echo "=== Graft E2E Test ==="
 echo ""
 
 # Detect platform
+OS="$(uname -s)"
 ARCH="$(uname -m)"
-case "$ARCH" in
-    x86_64)  TARGET="linux-x64" ;;
-    aarch64) TARGET="linux-arm64" ;;
-    *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
+case "$OS-$ARCH" in
+    Linux-x86_64)       TARGET="linux-x64" ;;
+    Linux-aarch64)      TARGET="linux-arm64" ;;
+    Darwin-x86_64)      TARGET="macos-x64" ;;
+    Darwin-arm64)       TARGET="macos-arm64" ;;
+    MINGW*|MSYS*)       TARGET="windows-x64" ;;
+    *)                  echo "Unsupported platform: $OS-$ARCH"; exit 1 ;;
 esac
 echo "Platform: $TARGET"
 echo ""
 
-# Step 1: Build graft-gui stub
-echo "Step 1: Building graft-gui stub..."
-cargo build --release -p graft-gui --manifest-path "$REPO_ROOT/Cargo.toml"
+# Determine stub filename
+case "$TARGET" in
+    windows-*)  STUB_NAME="graft-gui-stub-$TARGET.exe" ;;
+    macos-*)    STUB_NAME="graft-gui-stub-$TARGET.app.zip" ;;
+    *)          STUB_NAME="graft-gui-stub-$TARGET" ;;
+esac
+
+# Determine patcher executable path
+case "$TARGET" in
+    macos-*)    PATCHER="$WORK_DIR/output/patcher-$TARGET.app/Contents/MacOS/graft-gui" ;;
+    *)          PATCHER="$WORK_DIR/output/patcher-$TARGET" ;;
+esac
+
+# Determine graft CLI path
+case "$TARGET" in
+    windows-*)  GRAFT="$REPO_ROOT/target/release/graft.exe" ;;
+    *)          GRAFT="$REPO_ROOT/target/release/graft" ;;
+esac
+
+# Step 1: Build or copy stub
+if [ -n "$STUB_DIR" ]; then
+    echo "Step 1: Using pre-built stub from $STUB_DIR"
+else
+    echo "Step 1: Building graft-gui stub..."
+    case "$TARGET" in
+        macos-*)
+            echo "  ERROR: macOS requires --stub-dir (cannot build .app.zip locally)"
+            exit 1
+            ;;
+        *)
+            cargo build --release -p graft-gui --manifest-path "$REPO_ROOT/Cargo.toml"
+            ;;
+    esac
+fi
 
 # Step 2: Build graft CLI
 echo "Step 2: Building graft CLI..."
@@ -43,10 +87,18 @@ mkdir -p "$WORK_DIR/patch"
 mkdir -p "$WORK_DIR/output"
 
 # Copy stub with correct naming
-cp "$REPO_ROOT/target/release/graft-gui" "$WORK_DIR/stubs/graft-gui-stub-$TARGET"
-
-GRAFT="$REPO_ROOT/target/release/graft"
-PATCHER="$WORK_DIR/output/patcher-$TARGET"
+if [ -n "$STUB_DIR" ]; then
+    cp "$STUB_DIR/$STUB_NAME" "$WORK_DIR/stubs/"
+else
+    case "$TARGET" in
+        windows-*)
+            cp "$REPO_ROOT/target/release/graft-gui.exe" "$WORK_DIR/stubs/$STUB_NAME"
+            ;;
+        *)
+            cp "$REPO_ROOT/target/release/graft-gui" "$WORK_DIR/stubs/$STUB_NAME"
+            ;;
+    esac
+fi
 
 # Step 4: Create patch
 echo "Step 4: Creating patch..."

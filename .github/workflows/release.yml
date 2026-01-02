@@ -19,10 +19,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             name: linux-x64
             cross: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             name: linux-arm64
-            cross: true
+            cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows-x64
@@ -121,6 +121,12 @@ jobs:
           zip -r "graft-gui-stub-${{ matrix.name }}.app.zip" GraftPatcher.app
           rm -rf GraftPatcher.app
 
+      - name: Run E2E test
+        shell: bash
+        run: |
+          chmod +x e2e/run-e2e-test.sh
+          e2e/run-e2e-test.sh --stub-dir ./stubs
+
       - name: Upload stub artifact
         uses: actions/upload-artifact@v4
         with:
@@ -138,10 +144,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             name: linux-x64
             cross: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             name: linux-arm64
-            cross: true
+            cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows-x64

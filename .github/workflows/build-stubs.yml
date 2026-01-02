@@ -118,6 +118,12 @@ jobs:
           zip -r "graft-gui-stub-${{ matrix.name }}.app.zip" GraftPatcher.app
           rm -rf GraftPatcher.app
 
+      - name: Run E2E test
+        shell: bash
+        run: |
+          chmod +x e2e/run-e2e-test.sh
+          e2e/run-e2e-test.sh --stub-dir ./stubs
+
       - name: Upload stub artifact
         uses: actions/upload-artifact@v4
         with:
