@@ -21,6 +21,7 @@ pub const MAGIC_MARKER: &[u8; 8] = b"GRAFTPCH";
 /// - manifest.json (required)
 /// - diffs/*.diff (if present)
 /// - files/* (if present)
+/// - .graft_assets/* (if present, for icons/metadata)
 ///
 /// Returns the compressed bytes.
 pub fn create_archive_bytes(patch_dir: &Path) -> io::Result<Vec<u8>> {
@@ -44,6 +45,12 @@ pub fn create_archive_bytes(patch_dir: &Path) -> io::Result<Vec<u8>> {
         let files_path = patch_dir.join(patch::FILES_DIR);
         if files_path.is_dir() {
             add_directory_contents(&mut archive, &files_path, patch::FILES_DIR)?;
+        }
+
+        // Add assets directory if it exists
+        let assets_path = patch_dir.join(patch::ASSETS_DIR);
+        if assets_path.is_dir() {
+            add_directory_contents(&mut archive, &assets_path, patch::ASSETS_DIR)?;
         }
 
         // Finish the archive

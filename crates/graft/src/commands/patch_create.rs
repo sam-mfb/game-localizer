@@ -2,15 +2,28 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use graft_core::patch::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
+use graft_core::patch::{ASSETS_DIR, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, ICON_FILENAME, MANIFEST_FILENAME};
 use graft_core::utils::diff::create_diff;
 use graft_core::utils::dir_scan::{categorize_files, FileChange};
 use graft_core::utils::hash::hash_bytes;
 use graft_core::utils::manifest::{Manifest, ManifestEntry};
 
+/// Default icon embedded at compile time
+const DEFAULT_ICON: &[u8] = include_bytes!("../../assets/default_icon.png");
+
 /// Create a patch from two directories.
 /// Outputs a patch directory containing manifest.json, diffs/, and files/.
-pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> io::Result<()> {
+///
+/// If `allow_restricted` is true, the resulting manifest will allow patching
+/// restricted paths (system directories, executables). Default is false for security.
+pub fn run(
+    orig_dir: &Path,
+    new_dir: &Path,
+    output_dir: &Path,
+    version: u32,
+    title: Option<&str>,
+    allow_restricted: bool,
+) -> io::Result<()> {
     let changes = categorize_files(orig_dir, new_dir)?;
 
     // Create output directory structure
@@ -29,7 +42,8 @@ pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> 
         fs::create_dir_all(&files_dir)?;
     }
 
-    let mut manifest = Manifest::new(version);
+    let mut manifest = Manifest::new(version, title.map(|s| s.to_string()));
+    manifest.allow_restricted = allow_restricted;
 
     for change in changes {
         let entry = match change {
@@ -84,6 +98,11 @@ pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> 
     let manifest_path = output_dir.join(MANIFEST_FILENAME);
     manifest.save(&manifest_path)?;
 
+    // Create assets directory with default icon
+    let assets_dir = output_dir.join(ASSETS_DIR);
+    fs::create_dir_all(&assets_dir)?;
+    fs::write(assets_dir.join(ICON_FILENAME), DEFAULT_ICON)?;
+
     Ok(())
 }
 
@@ -106,7 +125,7 @@ mod tests {
         // Create a new file (triggers files/ creation)
         fs::write(new_dir.path().join("added.bin"), b"added").unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         assert!(output_dir.path().join("manifest.json").exists());
         assert!(output_dir.path().join("diffs").exists());
@@ -125,7 +144,7 @@ mod tests {
         fs::write(orig_dir.path().join("file.bin"), orig_content).unwrap();
         fs::write(new_dir.path().join("file.bin"), new_content).unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         // Read the diff and apply it
         let diff_data = fs::read(output_dir.path().join("diffs").join("file.bin.diff")).unwrap();
@@ -143,7 +162,7 @@ mod tests {
         let content = b"new file content";
         fs::write(new_dir.path().join("new.bin"), content).unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let copied = fs::read(output_dir.path().join("files").join("new.bin")).unwrap();
         assert_eq!(copied, content);
@@ -169,7 +188,7 @@ mod tests {
         fs::write(orig_dir.path().join("unchanged.bin"), b"same").unwrap();
         fs::write(new_dir.path().join("unchanged.bin"), b"same").unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let manifest = Manifest::load(&output_dir.path().join("manifest.json")).unwrap();
 
@@ -202,7 +221,7 @@ mod tests {
         fs::write(orig_dir.path().join("file.bin"), orig_content).unwrap();
         fs::write(new_dir.path().join("file.bin"), new_content).unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let manifest = Manifest::load(&output_dir.path().join("manifest.json")).unwrap();
 
@@ -231,7 +250,7 @@ mod tests {
         let new_dir = tempdir().unwrap();
         let output_dir = tempdir().unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let manifest = Manifest::load(&output_dir.path().join("manifest.json")).unwrap();
         assert!(manifest.entries.is_empty());
@@ -246,7 +265,7 @@ mod tests {
         // Only a deleted file - no diffs/ or files/ needed
         fs::write(orig_dir.path().join("deleted.bin"), b"deleted").unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         assert!(output_dir.path().join("manifest.json").exists());
         assert!(!output_dir.path().join("diffs").exists());

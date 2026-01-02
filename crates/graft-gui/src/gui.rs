@@ -99,16 +99,24 @@ pub struct GraftApp {
     mode: Mode,
     /// Text input for manual path entry
     path_input: String,
+    /// Window title from manifest
+    title: String,
 }
 
 impl GraftApp {
     /// Create a new app in demo mode with mock data
     pub fn demo() -> Self {
+        let patch_info = PatchInfo::mock();
+        let title = patch_info
+            .title
+            .clone()
+            .unwrap_or_else(|| "Graft Patcher".to_string());
         GraftApp {
             state: AppState::Welcome,
-            patch_info: PatchInfo::mock(),
+            patch_info,
             mode: Mode::Demo,
             path_input: String::new(),
+            title,
         }
     }
 
@@ -118,6 +126,10 @@ impl GraftApp {
     /// the raw data for the worker thread to use when applying.
     pub fn new(patch_data: Vec<u8>) -> Result<Self, PatchValidationError> {
         let patch_info = PatchValidator::validate(&patch_data)?;
+        let title = patch_info
+            .title
+            .clone()
+            .unwrap_or_else(|| "Graft Patcher".to_string());
 
         Ok(GraftApp {
             state: AppState::Welcome,
@@ -129,6 +141,7 @@ impl GraftApp {
                 rollback_rx: None,
             },
             path_input: String::new(),
+            title,
         })
     }
 
@@ -473,11 +486,13 @@ impl GraftApp {
     /// Render a scrollable log area with fixed height
     fn render_log(ui: &mut egui::Ui, log: &[String]) {
         let height = 120.0;
-        egui::Frame::none()
-            .fill(egui::Color32::from_gray(245))
-            .rounding(4.0)
+        egui::Frame::NONE
+            .fill(ui.visuals().extreme_bg_color)
+            .corner_radius(4.0)
             .inner_margin(4.0)
+            .outer_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 egui::ScrollArea::vertical()
                     .max_height(height)
                     .min_scrolled_height(height)
@@ -1091,34 +1106,10 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
         GraftApp::demo()
     };
 
-    eframe::run_native("Graft Patcher", options, Box::new(|cc| {
-        // Build our custom light visuals with explicit dark text
-        let mut visuals = egui::Visuals::light();
-        let dark_text = egui::Color32::from_gray(30);
-        visuals.override_text_color = Some(dark_text);
-        visuals.widgets.noninteractive.fg_stroke.color = dark_text;
-        visuals.widgets.inactive.fg_stroke.color = dark_text;
-        visuals.widgets.hovered.fg_stroke.color = dark_text;
-        visuals.widgets.active.fg_stroke.color = dark_text;
-        visuals.widgets.open.fg_stroke.color = dark_text;
-
-        // Build a complete style with our visuals
-        let mut style = egui::Style::default();
-        style.visuals = visuals.clone();
-
-        // Configure options to force light theme and use our custom style
-        cc.egui_ctx.options_mut(|opts| {
-            opts.theme_preference = egui::ThemePreference::Light;
-            opts.fallback_theme = egui::Theme::Light;
-            // Set both light and dark styles to our custom light style
-            // This ensures no matter what theme is detected, we use our style
-            opts.light_style = std::sync::Arc::new(style.clone());
-            opts.dark_style = std::sync::Arc::new(style.clone());
-        });
-
-        // Also set visuals directly to be safe
-        cc.egui_ctx.set_visuals(visuals);
-
-        Ok(Box::new(app))
-    }))
+    let title = app.title.clone();
+    eframe::run_native(
+        &title,
+        options,
+        Box::new(|_cc| Ok(Box::new(app))),
+    )
 }

@@ -6,12 +6,12 @@ Binary patching toolkit for creating and applying patches to files.
 
 ```bash
 # 1. Create a patch from original and modified directories
-graft patch create original/ modified/ my-patch/
+graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
 
 # 2. Create self-contained patchers for distribution
-graft patcher create my-patch/ --target linux-x64 -o my-patcher-linux
-graft patcher create my-patch/ --target windows-x64 -o my-patcher.exe
-graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
+graft build create my-patch/ --target linux-x64 -o my-patcher-linux
+graft build create my-patch/ --target windows-x64 -o my-patcher.exe
+graft build create my-patch/ --target macos-arm64 -o my-patcher-macos
 
 # 3. End users just run the patcher
 ./my-patcher-linux                              # GUI mode
@@ -96,15 +96,32 @@ graft patch rollback <target-dir> <manifest-path> [--force]
 
 This restores files from `.patch-backup/` to their original state. The `--force` flag skips validation of target files (use when files have been modified since patching).
 
+### Path Restrictions
+
+By default, patches are blocked from modifying sensitive locations to prevent misuse:
+
+**Blocked paths:**
+- Path traversal (`../` sequences)
+- System directories (`/usr`, `/bin`, `/etc`, `C:\Windows`, etc.)
+- macOS `.app` bundles
+- Executable files (`.exe`, `.dll`, `.so`, `.dylib`, `.sh`, `.bin`, etc.)
+
+To create a patch that can target these locations (for trusted use cases):
+```bash
+graft patch create original/ modified/ my-patch/ --allow-restricted
+```
+
+This sets `"allow_restricted": true` in the manifest. Without this flag, patches default to `allow_restricted: false` and will be rejected if they attempt to modify restricted paths.
+
 ## GUI Patcher
 
 The `graft-gui` crate provides a graphical patcher application.
 
 ### Demo Mode
 
-Run the GUI with mock data for development/testing:
+The GUI automatically runs in demo mode with mock data when no patch data is embedded/appended:
 ```
-cargo run -p graft-gui -- demo
+cargo run -p graft-gui
 ```
 
 ### Headless Mode
@@ -123,6 +140,13 @@ Rollback a previously applied patch:
 
 The `--force` flag skips validation of target files (use when files have been modified since patching).
 
+**Windows Note:** When the patcher is double-clicked, stdout/stderr are not connected (Windows GUI subsystem). For scripted use, run from a terminal or use the main `graft` CLI.
+
+**macOS Note:** For .app bundles, the binary is inside the bundle:
+```
+./MyPatcher.app/Contents/MacOS/MyPatcher headless apply /path/to/game
+```
+
 ### Features
 
 - **Pre-validation**: Validates target files before applying (both GUI and headless)
@@ -132,29 +156,29 @@ The `--force` flag skips validation of target files (use when files have been mo
 
 ## Building Self-Contained Patchers
 
-The `graft patcher` command creates standalone patcher executables by appending patch data to pre-built stub binaries. No Rust toolchain required!
+The `graft build` command creates standalone patcher executables by appending patch data to pre-built stub binaries. No Rust toolchain required!
 
 ### Usage
 
 ```bash
 # List available target platforms
-graft patcher targets
+graft build targets
 
 # Create a patcher for the current platform
-graft patcher create <patch-dir> [-o <output-file>]
+graft build create <patch-dir> [-o <output-file>]
 
 # Create a patcher for a specific target
-graft patcher create <patch-dir> --target <target> [-o <output-file>]
+graft build create <patch-dir> --target <target> [-o <output-file>]
 ```
 
 ### Example
 
 ```bash
-# Create a patch
-graft patch create original/ modified/ my-patch/
+# Create a patch with a custom window title
+graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
 
 # Build a self-contained patcher
-graft patcher create my-patch/ -o my-patcher
+graft build create my-patch/ -o my-patcher
 
 # The resulting binary can be distributed and run:
 ./my-patcher                              # GUI mode
@@ -176,9 +200,9 @@ graft patcher create my-patch/ -o my-patcher
 
 ```bash
 # Create patchers for multiple platforms
-graft patcher create my-patch/ --target linux-x64 -o my-patcher-linux
-graft patcher create my-patch/ --target windows-x64 -o my-patcher.exe
-graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
+graft build create my-patch/ --target linux-x64 -o my-patcher-linux
+graft build create my-patch/ --target windows-x64 -o my-patcher.exe
+graft build create my-patch/ --target macos-arm64 -o my-patcher-macos
 ```
 
 ### How It Works
@@ -190,6 +214,35 @@ Patchers are created using a "self-appending binary" approach:
 3. At runtime, the patcher reads the appended data from itself
 
 This means you can create patchers for any platform from any platform - no cross-compilation needed!
+
+### Customizing Patchers
+
+#### Window Title
+
+Set a custom window title when creating the patch:
+```bash
+graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
+```
+
+Or edit `my-patch/manifest.json` directly to change the `"title"` field.
+
+#### Custom Icon
+
+Replace the default icon by placing your own PNG file in the patch folder:
+```
+my-patch/
+  manifest.json
+  diffs/
+  files/
+  .graft_assets/
+    icon.png          # Your custom icon (1024x1024 recommended)
+```
+
+The icon is automatically embedded when building patchers:
+- **Windows**: Embedded as the application icon (visible in Explorer)
+- **macOS**: Converted to .icns and included in the .app bundle
+
+If no custom icon is provided, a default graft icon is used.
 
 ## Development
 
@@ -206,8 +259,10 @@ When building from source without the `embedded-stubs` feature, stubs are downlo
 | Feature | Description |
 |---------|-------------|
 | (default) | Downloads stubs from GitHub releases on demand |
-| `native-stub` | Embeds only the current platform's stub |
+| `native-stub` | Embeds only the current platform's stub (Linux only) |
 | `embedded-stubs` | Embeds all platform stubs (used for releases) |
+
+**Note:** The `native-stub` feature only works on Linux. On macOS and Windows, stubs are downloaded from GitHub releases on first use. This is because macOS requires `.app` bundles which are more complex to embed during local development.
 
 ### Stub Version (Development)
 

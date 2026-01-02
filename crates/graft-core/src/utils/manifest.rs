@@ -35,13 +35,21 @@ impl ManifestEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
     pub version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// If true, allows patching restricted paths (system dirs, executables).
+    /// Default is false for security.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_restricted: bool,
     pub entries: Vec<ManifestEntry>,
 }
 
 impl Manifest {
-    pub fn new(version: u32) -> Self {
+    pub fn new(version: u32, title: Option<String>) -> Self {
         Manifest {
             version,
+            title,
+            allow_restricted: false,
             entries: Vec::new(),
         }
     }
@@ -61,7 +69,7 @@ impl Manifest {
 
 impl Default for Manifest {
     fn default() -> Self {
-        Self::new(1)
+        Self::new(1, None)
     }
 }
 
@@ -69,6 +77,7 @@ impl Default for Manifest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchInfo {
     pub version: u32,
+    pub title: Option<String>,
     pub entry_count: usize,
     pub patches: usize,
     pub additions: usize,
@@ -89,6 +98,7 @@ impl PatchInfo {
         }
         PatchInfo {
             version: manifest.version,
+            title: manifest.title.clone(),
             entry_count: manifest.entries.len(),
             patches,
             additions,
@@ -100,6 +110,7 @@ impl PatchInfo {
     pub fn mock() -> Self {
         PatchInfo {
             version: 1,
+            title: Some("Graft Patcher (Demo)".to_string()),
             entry_count: 42,
             patches: 35,
             additions: 5,
@@ -117,6 +128,8 @@ mod tests {
     fn roundtrip_serialization() {
         let manifest = Manifest {
             version: 1,
+            title: Some("Test Patcher".to_string()),
+            allow_restricted: false,
             entries: vec![
                 ManifestEntry::Patch {
                     file: "game.bin".to_string(),
@@ -186,6 +199,8 @@ mod tests {
     fn save_produces_valid_json() {
         let manifest = Manifest {
             version: 1,
+            title: None,
+            allow_restricted: false,
             entries: vec![ManifestEntry::Add {
                 file: "test.bin".to_string(),
                 final_hash: "hash123".to_string(),

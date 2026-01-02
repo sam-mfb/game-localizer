@@ -1,6 +1,6 @@
 [package]
 name = "graft"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [features]
@@ -14,9 +14,12 @@ embedded-stubs = []
 
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
-dirs = "5"
+dirs = "6"
+editpe = { version = "0.2", default-features = false, features = ["std", "images"] }
 graft-core = { path = "../graft-core" }
-ureq = "2"
+icns = "0.3.1"
+ureq = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-tempfile = "3.23.0"
+tempfile = "3.24"

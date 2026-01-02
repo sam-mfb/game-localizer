@@ -29,15 +29,15 @@ enum Commands {
         #[command(subcommand)]
         command: PatchCommands,
     },
-    /// Create standalone patcher executables
-    Patcher {
+    /// Build standalone patcher executables
+    Build {
         #[command(subcommand)]
-        command: PatcherCommands,
+        command: BuildCommands,
     },
 }
 
 #[derive(Subcommand)]
-enum PatcherCommands {
+enum BuildCommands {
     /// Create a self-contained patcher executable
     Create {
         /// Path to the patch directory (containing manifest.json)
@@ -114,6 +114,12 @@ enum PatchCommands {
         /// Manifest version number
         #[arg(long, default_value = "1")]
         version: u32,
+        /// Window title for the patcher application
+        #[arg(long)]
+        title: Option<String>,
+        /// Allow patching restricted paths (system dirs, executables)
+        #[arg(long)]
+        allow_restricted: bool,
     },
     /// Apply a patch to a target directory
     Apply {
@@ -217,8 +223,10 @@ fn main() {
                 new,
                 output,
                 version,
+                title,
+                allow_restricted,
             } => {
-                match graft::commands::patch_create::run(&orig, &new, &output, version) {
+                match graft::commands::patch_create::run(&orig, &new, &output, version, title.as_deref(), allow_restricted) {
                     Ok(()) => {
                         println!("Patch created at {}", output.display());
                     }
@@ -251,13 +259,13 @@ fn main() {
                 }
             }
         },
-        Commands::Patcher { command } => match command {
-            PatcherCommands::Create {
+        Commands::Build { command } => match command {
+            BuildCommands::Create {
                 patch_dir,
                 target,
                 output,
             } => {
-                match graft::commands::patcher_create::run(
+                match graft::commands::build::run(
                     &patch_dir,
                     target.as_deref(),
                     output.as_deref(),
@@ -269,7 +277,7 @@ fn main() {
                     }
                 }
             }
-            PatcherCommands::Targets => {
+            BuildCommands::Targets => {
                 println!("Available targets:");
                 for target in graft::targets::ALL_TARGETS {
                     let current = graft::targets::current_target()

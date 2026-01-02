@@ -8,3 +8,7 @@ pub const DIFF_EXTENSION: &str = ".diff";
 pub const MANIFEST_FILENAME: &str = "manifest.json";
 /// Directory name for backups during patch application
 pub const BACKUP_DIR: &str = ".patch-backup";
+/// Directory name for patcher assets (icons, etc.)
+pub const ASSETS_DIR: &str = ".graft_assets";
+/// Filename for the patcher icon
+pub const ICON_FILENAME: &str = "icon.png";
