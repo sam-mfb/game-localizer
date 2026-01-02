@@ -33,3 +33,6 @@ tmp
 
 # Built patchers output directory
 dist/
+
+# E2E test work directory
+e2e/.e2e-work/
