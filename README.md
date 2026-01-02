@@ -25,7 +25,8 @@ graft/
 ├── crates/
 │   ├── graft-core/      # Shared library (patching logic)
 │   ├── graft/           # CLI tool
-│   └── graft-gui/       # GUI patcher application (also serves as stub for patchers)
+│   ├── graft-gui/       # GUI patcher application (also serves as stub for patchers)
+│   └── graft-icon/      # Icon conversion utility (PNG to ICNS/ICO)
 ```
 
 ## Installation
@@ -164,8 +165,8 @@ Check your graft version to see if you're in production or development mode:
 
 ```bash
 graft --version
-# graft 0.3.0 (production)  - has embedded stubs
-# graft 0.3.0 (development) - requires --stub-dir
+# graft 0.5.0 (production)  - has embedded stubs
+# graft 0.5.0 (development) - requires --stub-dir
 ```
 
 ### Production (with embedded stubs)
