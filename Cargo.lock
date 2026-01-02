@@ -1504,6 +1504,7 @@ name = "graft-core"
 version = "0.2.0"
 dependencies = [
  "bsdiff",
+ "dirs",
  "flate2",
  "serde",
  "serde_json",
