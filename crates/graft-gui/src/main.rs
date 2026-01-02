@@ -44,6 +44,7 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "graft-gui")]
 #[command(about = "GUI/CLI patcher application")]
+#[command(version)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,

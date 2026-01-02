@@ -7,6 +7,7 @@ use graft::commands::check::CheckResult;
 #[derive(Parser)]
 #[command(name = "graft")]
 #[command(about = "Binary patching toolkit")]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

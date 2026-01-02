@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "graft"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "dirs",
@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "graft-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bsdiff",
  "dirs",
@@ -1515,7 +1515,7 @@ dependencies = [
 
 [[package]]
 name = "graft-gui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "eframe",

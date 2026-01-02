@@ -511,7 +511,8 @@ impl GraftApp {
         ui.add_space(16.0);
 
         ui.group(|ui| {
-            ui.label(format!("Version: {}", self.patch_info.version));
+            ui.label(format!("Graft version: {}", env!("CARGO_PKG_VERSION")));
+            ui.label(format!("Patch version: {}", self.patch_info.version));
             ui.label(format!("Total operations: {}", self.patch_info.entry_count));
             ui.add_space(8.0);
             ui.horizontal(|ui| {
