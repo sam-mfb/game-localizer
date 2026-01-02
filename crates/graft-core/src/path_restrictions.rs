@@ -312,6 +312,7 @@ mod tests {
     fn allow_restricted_bypasses_all_checks() {
         let manifest = Manifest {
             version: 1,
+            name: "TestPatcher".to_string(),
             title: None,
             allow_restricted: true,
             entries: vec![ManifestEntry::Patch {
@@ -330,6 +331,7 @@ mod tests {
     fn restricted_manifest_blocks_traversal() {
         let manifest = Manifest {
             version: 1,
+            name: "TestPatcher".to_string(),
             title: None,
             allow_restricted: false,
             entries: vec![ManifestEntry::Patch {

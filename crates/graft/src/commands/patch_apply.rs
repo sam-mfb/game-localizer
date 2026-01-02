@@ -78,7 +78,7 @@ mod tests {
         fs::write(orig_dir.path().join("deleted.bin"), b"to delete").unwrap();
 
         // Create patch
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         // Set up target (copy of original)
         fs::write(target_dir.path().join("modified.bin"), b"original").unwrap();
@@ -109,7 +109,7 @@ mod tests {
         // Create a patch that modifies a file
         fs::write(orig_dir.path().join("file.bin"), b"original").unwrap();
         fs::write(new_dir.path().join("file.bin"), b"modified").unwrap();
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         // Target is missing the file
         let result = run(target_dir.path(), patch_dir.path());
@@ -127,7 +127,7 @@ mod tests {
         // Create a patch
         fs::write(orig_dir.path().join("file.bin"), b"original").unwrap();
         fs::write(new_dir.path().join("file.bin"), b"modified").unwrap();
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         // Target has different content
         fs::write(target_dir.path().join("file.bin"), b"different").unwrap();
@@ -146,7 +146,7 @@ mod tests {
 
         // Create a patch that adds a file
         fs::write(new_dir.path().join("new.bin"), b"new content").unwrap();
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         // Target already has that file
         fs::write(target_dir.path().join("new.bin"), b"existing").unwrap();
@@ -165,7 +165,7 @@ mod tests {
 
         // Create a patch that deletes a file
         fs::write(orig_dir.path().join("deleted.bin"), b"content").unwrap();
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         // Target doesn't have the file (already deleted)
         let result = run(target_dir.path(), patch_dir.path());
@@ -185,7 +185,7 @@ mod tests {
         fs::write(new_dir.path().join("a.bin"), b"modified a").unwrap();
         fs::write(orig_dir.path().join("b.bin"), b"original b").unwrap();
         fs::write(new_dir.path().join("b.bin"), b"modified b").unwrap();
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         // Set up target correctly for first file, but corrupt the diff for second
         fs::write(target_dir.path().join("a.bin"), b"original a").unwrap();
@@ -216,7 +216,7 @@ mod tests {
 
         fs::write(orig_dir.path().join("file.bin"), b"original").unwrap();
         fs::write(new_dir.path().join("file.bin"), b"modified").unwrap();
-        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, None, true).unwrap();
+        patch_create::run(orig_dir.path(), new_dir.path(), patch_dir.path(), 1, "TestPatcher", None, true).unwrap();
 
         fs::write(target_dir.path().join("file.bin"), b"original").unwrap();
 

@@ -146,6 +146,9 @@ enum PatchCommands {
         /// Manifest version number
         #[arg(short = 'v', long)]
         version: u32,
+        /// Base name for patcher executable (e.g., "MyPatcher")
+        #[arg(long)]
+        name: String,
         /// Window title for the patcher application
         #[arg(long)]
         title: Option<String>,
@@ -255,10 +258,11 @@ fn main() {
                 new,
                 output,
                 version,
+                name,
                 title,
                 allow_restricted,
             } => {
-                match graft::commands::patch_create::run(&orig, &new, &output, version, title.as_deref(), allow_restricted) {
+                match graft::commands::patch_create::run(&orig, &new, &output, version, &name, title.as_deref(), allow_restricted) {
                     Ok(()) => {
                         println!("Patch created at {}", output.display());
                     }

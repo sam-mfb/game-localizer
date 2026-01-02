@@ -47,10 +47,13 @@ case "$TARGET" in
     *)          STUB_NAME="graft-gui-stub-$TARGET" ;;
 esac
 
+# E2E test patcher name
+PATCHER_NAME="E2ETestPatcher"
+
 # Determine patcher executable path
 case "$TARGET" in
-    macos-*)    PATCHER="$WORK_DIR/output/patcher-$TARGET.app/Contents/MacOS/graft-gui" ;;
-    *)          PATCHER="$WORK_DIR/output/patcher-$TARGET" ;;
+    macos-*)    PATCHER="$WORK_DIR/output/$PATCHER_NAME-$TARGET.app/Contents/MacOS/graft-gui" ;;
+    *)          PATCHER="$WORK_DIR/output/$PATCHER_NAME-$TARGET" ;;
 esac
 
 # Determine graft CLI path
@@ -107,6 +110,7 @@ echo "Step 4: Creating patch..."
     "$SCRIPT_DIR/exampleTarget" \
     "$WORK_DIR/patch" \
     -v 1 \
+    --name "$PATCHER_NAME" \
     --title "E2E Test Patch"
 
 # Step 5: Build patcher

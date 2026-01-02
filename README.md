@@ -6,7 +6,7 @@ Binary patching toolkit for creating and applying patches to files.
 
 ```bash
 # 1. Create a patch from original and modified directories
-graft patch create original/ modified/ my-patch/ -v 1 --title "My Game Patcher"
+graft patch create original/ modified/ my-patch/ -v 1 --name MyPatcher --title "My Game Patcher"
 
 # 2. Create self-contained patchers for distribution
 graft build my-patch/ -o ./output                             # All available platforms
@@ -14,8 +14,8 @@ graft build my-patch/ -o ./output --target linux-x64          # Single platform
 graft build my-patch/ -o ./output -t linux-x64 -t windows-x64 # Multiple platforms
 
 # 3. End users just run the patcher
-./output/patcher-linux-x64                              # GUI mode
-./output/patcher-linux-x64 headless apply /target -y   # CLI mode
+./output/MyPatcher-linux-x64                              # GUI mode
+./output/MyPatcher-linux-x64 headless apply /target -y   # CLI mode
 ```
 
 ## Project Structure
@@ -69,8 +69,10 @@ graft hash check <hash> <file>
 
 Create a patch from two directories:
 ```
-graft patch create <original-dir> <modified-dir> <patch-output-dir> -v <version>
+graft patch create <original-dir> <modified-dir> <patch-output-dir> -v <version> --name <patcher-name>
 ```
+
+The `--name` argument specifies the base name for the patcher executable (e.g., "MyPatcher" produces "MyPatcher-linux-x64").
 
 This compares the directories and generates:
 - `manifest.json` - lists all operations with SHA-256 hashes
@@ -144,7 +146,7 @@ The `--force` flag skips validation of target files (use when files have been mo
 
 **macOS Note:** For .app bundles, the binary is inside the bundle:
 ```
-./MyPatcher.app/Contents/MacOS/MyPatcher headless apply /path/to/game
+./MyPatcher-macos-arm64.app/Contents/MacOS/graft-gui headless apply /path/to/game
 ```
 
 ### Features
@@ -177,10 +179,10 @@ graft build ./my-patch -o ./output -t linux-x64 -t windows-x64  # Multiple targe
 graft build ./my-patch -o ./output --stub-dir ./custom          # Override with custom stubs
 ```
 
-Output files are created in the output directory:
-- `./output/patcher-linux-x64`
-- `./output/patcher-windows-x64.exe`
-- `./output/patcher-macos-arm64.app/`
+Output files are created in the output directory (using the `--name` from patch creation):
+- `./output/MyPatcher-linux-x64`
+- `./output/MyPatcher-windows-x64.exe`
+- `./output/MyPatcher-macos-arm64.app/`
 
 ### Development (without embedded stubs)
 
@@ -207,16 +209,16 @@ Stub files must follow the naming convention:
 ### Example
 
 ```bash
-# Create a patch with a custom window title
-graft patch create original/ modified/ my-patch/ -v 1 --title "My Game Patcher"
+# Create a patch with a custom patcher name and window title
+graft patch create original/ modified/ my-patch/ -v 1 --name MyPatcher --title "My Game Patcher"
 
 # Build self-contained patchers (production mode)
 graft build my-patch/ -o ./output
 
 # The resulting binaries can be distributed and run:
-./output/patcher-linux-x64                              # GUI mode
-./output/patcher-linux-x64 headless apply /target -y   # CLI mode (apply)
-./output/patcher-linux-x64 headless rollback /target   # CLI mode (rollback)
+./output/MyPatcher-linux-x64                              # GUI mode
+./output/MyPatcher-linux-x64 headless apply /target -y   # CLI mode (apply)
+./output/MyPatcher-linux-x64 headless rollback /target   # CLI mode (rollback)
 ```
 
 ### Available Targets

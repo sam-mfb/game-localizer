@@ -81,10 +81,10 @@ mod tests {
     fn extracts_title_from_archive() {
         let patch_dir = tempdir().unwrap();
 
-        // Create manifest with title
+        // Create manifest with name and title
         fs::write(
             patch_dir.path().join("manifest.json"),
-            r#"{"version": 1, "title": "My Test Title", "entries": []}"#,
+            r#"{"version": 1, "name": "TestPatcher", "title": "My Test Title", "entries": []}"#,
         )
         .unwrap();
 
@@ -93,6 +93,7 @@ mod tests {
 
         // Validate and check title
         let info = PatchValidator::validate(&archive_data).unwrap();
+        assert_eq!(info.name, "TestPatcher");
         assert_eq!(info.title, Some("My Test Title".to_string()));
     }
 }

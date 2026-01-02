@@ -74,11 +74,11 @@ impl std::error::Error for PatcherError {
 }
 
 /// Output filename for a target.
-fn output_filename(target: &Target) -> String {
+fn output_filename(name: &str, target: &Target) -> String {
     if target.stub_is_bundle {
-        format!("patcher-{}.app", target.name)
+        format!("{}-{}.app", name, target.name)
     } else {
-        format!("patcher-{}{}", target.name, target.binary_suffix)
+        format!("{}-{}{}", name, target.name, target.binary_suffix)
     }
 }
 
@@ -192,8 +192,8 @@ fn build_single(
     let info = PatchInfo::from_manifest(&manifest);
 
     println!(
-        "Creating patcher for patch v{} ({} operations: {} patches, {} additions, {} deletions)",
-        info.version, info.entry_count, info.patches, info.additions, info.deletions
+        "Creating patcher '{}' for patch v{} ({} operations: {} patches, {} additions, {} deletions)",
+        info.name, info.version, info.entry_count, info.patches, info.additions, info.deletions
     );
     println!("Target: {}", target.name);
 
@@ -205,7 +205,7 @@ fn build_single(
     println!("done ({} bytes)", archive_data.len());
 
     // Determine output path
-    let output = output_dir.join(output_filename(target));
+    let output = output_dir.join(output_filename(&info.name, target));
 
     // Build patcher based on target type
     if target.stub_is_bundle {

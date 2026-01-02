@@ -298,7 +298,7 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::write(
             dir.path().join("manifest.json"),
-            r#"{"version": 1, "entries": []}"#,
+            r#"{"version": 1, "name": "TestPatcher", "entries": []}"#,
         )
         .unwrap();
 
@@ -318,7 +318,7 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::write(
             dir.path().join("manifest.json"),
-            r#"{"version": 1, "entries": [
+            r#"{"version": 1, "name": "TestPatcher", "entries": [
                 {"operation": "patch", "file": "test.bin", "original_hash": "a", "diff_hash": "b", "final_hash": "c"}
             ]}"#,
         )
@@ -333,7 +333,7 @@ mod tests {
         let dir = tempdir().unwrap();
         fs::write(
             dir.path().join("manifest.json"),
-            r#"{"version": 1, "entries": [
+            r#"{"version": 1, "name": "TestPatcher", "entries": [
                 {"operation": "add", "file": "new.bin", "final_hash": "a"}
             ]}"#,
         )
@@ -350,7 +350,7 @@ mod tests {
         // Create manifest
         fs::write(
             dir.path().join("manifest.json"),
-            r#"{"version": 1, "entries": [
+            r#"{"version": 1, "name": "TestPatcher", "entries": [
                 {"operation": "patch", "file": "modified.bin", "original_hash": "a", "diff_hash": "b", "final_hash": "c"},
                 {"operation": "add", "file": "new.bin", "final_hash": "d"},
                 {"operation": "delete", "file": "old.bin", "original_hash": "e"}

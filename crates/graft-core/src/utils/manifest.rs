@@ -35,6 +35,8 @@ impl ManifestEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
     pub version: u32,
+    /// Base name for the patcher executable (e.g., "MyPatcher")
+    pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// If true, allows patching restricted paths (system dirs, executables).
@@ -45,9 +47,10 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn new(version: u32, title: Option<String>) -> Self {
+    pub fn new(version: u32, name: String, title: Option<String>) -> Self {
         Manifest {
             version,
+            name,
             title,
             allow_restricted: false,
             entries: Vec::new(),
@@ -69,7 +72,7 @@ impl Manifest {
 
 impl Default for Manifest {
     fn default() -> Self {
-        Self::new(1, None)
+        Self::new(1, "Patcher".to_string(), None)
     }
 }
 
@@ -77,6 +80,7 @@ impl Default for Manifest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatchInfo {
     pub version: u32,
+    pub name: String,
     pub title: Option<String>,
     pub entry_count: usize,
     pub patches: usize,
@@ -98,6 +102,7 @@ impl PatchInfo {
         }
         PatchInfo {
             version: manifest.version,
+            name: manifest.name.clone(),
             title: manifest.title.clone(),
             entry_count: manifest.entries.len(),
             patches,
@@ -110,6 +115,7 @@ impl PatchInfo {
     pub fn mock() -> Self {
         PatchInfo {
             version: 1,
+            name: "DemoPatcher".to_string(),
             title: Some("Graft Patcher (Demo)".to_string()),
             entry_count: 42,
             patches: 35,
@@ -128,6 +134,7 @@ mod tests {
     fn roundtrip_serialization() {
         let manifest = Manifest {
             version: 1,
+            name: "TestPatcher".to_string(),
             title: Some("Test Patcher".to_string()),
             allow_restricted: false,
             entries: vec![
@@ -159,6 +166,7 @@ mod tests {
     fn load_from_json_string() {
         let json = r#"{
             "version": 1,
+            "name": "TestPatcher",
             "entries": [
                 {
                     "operation": "patch",
@@ -175,6 +183,7 @@ mod tests {
 
         let manifest = Manifest::load(temp_file.path()).unwrap();
         assert_eq!(manifest.version, 1);
+        assert_eq!(manifest.name, "TestPatcher");
         assert_eq!(manifest.entries.len(), 1);
         assert_eq!(manifest.entries[0].file(), "test.bin");
         assert!(matches!(manifest.entries[0], ManifestEntry::Patch { .. }));
@@ -199,6 +208,7 @@ mod tests {
     fn save_produces_valid_json() {
         let manifest = Manifest {
             version: 1,
+            name: "TestPatcher".to_string(),
             title: None,
             allow_restricted: false,
             entries: vec![ManifestEntry::Add {
@@ -211,6 +221,7 @@ mod tests {
         manifest.save(temp_file.path()).unwrap();
 
         let content = fs::read_to_string(temp_file.path()).unwrap();
+        assert!(content.contains("\"name\": \"TestPatcher\""));
         assert!(content.contains("\"operation\": \"add\""));
         assert!(content.contains("\"final_hash\": \"hash123\""));
         assert!(!content.contains("original_hash"));
@@ -241,11 +252,12 @@ mod tests {
 
     #[test]
     fn title_is_deserialized() {
-        let json = r#"{"version": 1, "title": "My Custom Title", "entries": []}"#;
+        let json = r#"{"version": 1, "name": "TestPatcher", "title": "My Custom Title", "entries": []}"#;
         let temp_file = NamedTempFile::new().unwrap();
         fs::write(temp_file.path(), json).unwrap();
 
         let manifest = Manifest::load(temp_file.path()).unwrap();
+        assert_eq!(manifest.name, "TestPatcher");
         assert_eq!(manifest.title, Some("My Custom Title".to_string()));
     }
 }
